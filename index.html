@@ -369,8 +369,11 @@ function renderComp360(box){
   ]) +
   '<div class="card" style="margin-top:14px"><h2>Caixas equivalentes de 360 — por mês <span style="color:var(--mut);text-transform:none;letter-spacing:0">· clique numa barra para ver a composição</span></h2>'+chart('cCx360','tall')+'</div>'+
   '<div id="c360Comp" style="margin-top:14px"></div>';
-  const ch = new Chart(el('cCx360'),{type:'bar',data:{labels:meses.map(m=>MESN[+m.slice(5,7)-1]+'/'+m.slice(2,4)),datasets:[{data:vals,backgroundColor:'#ffd400',borderRadius:6}]},
-    options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}},onClick:(e,els)=>{ if(!els.length) return; const i=els[0].index; mostrarComp(meses[i]); }}});
+  let selIdx = meses.indexOf(COMP.ref.slice(0,7));
+  const ch = new Chart(el('cCx360'),{type:'bar',data:{labels:meses.map(m=>MESN[+m.slice(5,7)-1]+'/'+m.slice(2,4)),datasets:[{data:vals,backgroundColor:meses.map((_,i)=>i===selIdx?'#ffffff':'#ffd400'),borderRadius:6}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}},
+      onHover:(e,els)=>{ e.native.target.style.cursor = els.length?'pointer':'default'; },
+      onClick:(e,els)=>{ if(!els.length) return; const i=els[0].index; selIdx=i; ch.data.datasets[0].backgroundColor = meses.map((_,j)=>j===i?'#ffffff':'#ffd400'); ch.update(); mostrarComp(meses[i]); }}});
   function mostrarComp(ym){
     const comp = (COMP.comp_por_mes||{})[ym] || {};
     const ordem = ordemF.filter(f=>comp[f]!==undefined)
