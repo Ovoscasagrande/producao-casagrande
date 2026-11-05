@@ -1243,12 +1243,14 @@ function renderProdHoje(box){
   const diff = prev?dia.total-prev.total:0;
   const pct = prev&&prev.total?diff/prev.total*100:0;
   const best = serie.reduce((a,b)=>b.total>a.total?b:a,serie[0]);
+  const mesEntries = Object.entries(PROD.por_mes).sort((a,b)=>b[1]-a[1]);
+  const bestMes = mesEntries[0];
   const mesTot = Object.values(PROD.por_apres_mes).reduce((a,b)=>a+b,0);
   box.innerHTML = kpis([
     {l:'Produção do dia ('+dia.data+')', v:fmt(dia.total)+' cx', d:prev?(diff>=0?'▲ +':'▼ ')+fmt(diff)+' cx ('+pct.toFixed(1)+'%)':'', cls:diff>=0?'up':'down'},
     {l:'Média/dia (ano)', v:fmt(media)+' cx', d:serie.length+' dias produzidos', cls:'mut'},
-    {l:'Total no mês', v:fmt(mesTot)+' cx', d:'', cls:''},
-    {l:'Melhor dia do ano', v:fmt(best.total)+' cx', d:best.data, cls:''},
+    {l:'Melhor dia do mês', v:fmt(Math.max(...serie.filter(x=>x.data.slice(0,7)==dia.data.slice(0,7)).map(x=>x.total)))+' cx', d:'', cls:'up'},
+    {l:'Melhor mês do ano', v:fmt(bestMes[1])+' cx', d:MESN[+bestMes[0].slice(5,7)-1]+'/'+bestMes[0].slice(2,4), cls:'up'},
   ]) + '<div class="grid row2" style="margin-top:14px">'+
     card('Produção diária — últimos 60 dias (caixas)', chart('pSerie','tall'))+
     card('Média por dia da semana', chart('pDow','tall'))+
