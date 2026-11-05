@@ -1461,17 +1461,31 @@ function renderCompHoje(box){
     {l:'Média/dia (histórico)', v:fmt(media)+' cx', d:serie.length+' dias com compra', cls:'mut'},
     {l:'Itens comprados', v:dia.items.filter(i=>i.caixa>0).length, d:'de '+dia.items.length+' produtos', cls:''},
   ]) + '<div class="grid row2" style="margin-top:14px">'+
-    card('Compras diárias — últimos 60 dias (caixas)', chart('cSerie','tall'))+
-    card('Média por dia da semana', chart('cDow','tall'))+
+    card('🏆 Rank das compras — últimas 8 semanas (caixas)', chart('cRank8','tall'))+
+    card('📦 Último dia com compra — '+dia.data.slice(8,10)+'/'+dia.data.slice(5,7)+'/'+dia.data.slice(0,4),
+      tabela(dia.items.filter(i=>i.caixa>0).sort((a,b)=>b.caixa-a.caixa),
+      [{t:'Item',f:r=>r.desc},{t:'Granja',f:r=>r.fab},
+       {t:'Qtd (un)',num:1,f:r=>fmt(r.compra)},
+       {t:'Qtd (cx 360)',num:1,f:r=>fmt(Math.round(r.compra/360))}]))+
   '</div><div class="card" style="margin-top:14px">'+
-    card('Compras do dia por produto', tabela(dia.items.filter(i=>i.caixa>0||i.compra<0),
+    card('Compras do dia por produto (caixas reais)', tabela(dia.items.filter(i=>i.caixa>0||i.compra<0),
       [{t:'Cód',f:r=>r.cod},{t:'Produto',f:r=>r.desc},{t:'Granja',f:r=>r.fab},
        {t:'Unidades',num:1,f:r=>fmt(r.compra)},{t:'Caixas',num:1,f:r=>fmt(r.caixa)},
        {t:'Estoque final',num:1,f:r=>`<span style="color:${r.fin<=0?'var(--bad)':'inherit'}">${fmt(r.fin)}</span>`}]))+
   '</div>';
-  line('cSerie', COMP.ult60.map(d=>d.data.slice(8,10)+'/'+d.data.slice(5,7)), COMP.ult60.map(d=>d.total), '#ffd400','rgba(255,212,0,.14)');
-  const dw = DIAS.filter(w=>COMP.med_dow[w]!==undefined).map(w=>[w,COMP.med_dow[w]]);
-  bar('cDow', dw.map(x=>x[0]), dw.map(x=>x[1]), '#ffd400');
+  // rank das últimas 8 semanas (semana do mês: 1ª=dias 1-7, ... 5ª=29-fim)
+  const semAgg = {};
+  COMP.serie.forEach(s=>{
+    const d = +s.data.slice(8,10);
+    const k = s.data.slice(0,7)+'-W'+Math.ceil(d/7);
+    semAgg[k] = semAgg[k] || {mes:s.data.slice(0,7), w:Math.ceil(d/7), total:0};
+    semAgg[k].total += s.total;
+  });
+  const rank8 = Object.values(semAgg).sort((a,b)=> (a.mes+a.w).localeCompare(b.mes+b.w) ).slice(-8)
+    .sort((a,b)=>b.total-a.total);
+  new Chart(el('cRank8'),{type:'bar',data:{labels:rank8.map(r=>r.w+'ª sem '+MESN[+r.mes.slice(5,7)-1]+'/'+r.mes.slice(2,4)),
+    datasets:[{data:rank8.map(r=>r.total),backgroundColor:rank8.map((_,i)=> i===0?'#fff':'#ffd400'),borderRadius:6}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
 }
 
 function renderCompFab(box){
