@@ -1467,11 +1467,6 @@ function renderCompHoje(box){
       [{t:'Item',f:r=>r.desc},{t:'Granja',f:r=>r.fab},
        {t:'Qtd (un)',num:1,f:r=>fmt(r.compra)},
        {t:'Qtd (cx 360)',num:1,f:r=>fmt(Math.round(r.compra/360))}]))+
-  '</div><div class="card" style="margin-top:14px">'+
-    card('Compras do dia por produto (caixas reais)', tabela(dia.items.filter(i=>i.caixa>0||i.compra<0),
-      [{t:'Cód',f:r=>r.cod},{t:'Produto',f:r=>r.desc},{t:'Granja',f:r=>r.fab},
-       {t:'Unidades',num:1,f:r=>fmt(r.compra)},{t:'Caixas',num:1,f:r=>fmt(r.caixa)},
-       {t:'Estoque final',num:1,f:r=>`<span style="color:${r.fin<=0?'var(--bad)':'inherit'}">${fmt(r.fin)}</span>`}]))+
   '</div>';
   // rank das últimas 8 semanas (semana do mês: 1ª=dias 1-7, ... 5ª=29-fim)
   const semAgg = {};
