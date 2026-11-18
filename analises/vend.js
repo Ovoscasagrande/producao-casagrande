@@ -3,19 +3,23 @@ async function abaVendedoresAdmin(){
   const vend = await carregar('ovos_vendedores');
   const vendas = await carregar('ovos_vendas','vendedor_id,valor_venda,valor_recebido,data_venda');
   const comis = await carregar('ovos_comissoes','vendedor_id,competencia,valor_comissao,status');
+  const hist = await carregar('ovos_recebidos_historico','vendedor,data_pagamento,valor_pago');
   const agora = new Date();
-  const mesAtu = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}`;
+  const y = agora.getFullYear();
+  const mesAtu = `${y}-${String(agora.getMonth()+1).padStart(2,'0')}`;
   const resumo = {};
-  vend.forEach(v=> resumo[v.id] = {venda:0, rec:0, comis:0, prev:0});
-  vendas.forEach(x=>{ const r=resumo[x.vendedor_id]; if(!r) return; r.venda+=+x.valor_venda||0; r.rec+=+x.valor_recebido||0; });
-  comis.forEach(c=>{ const r=resumo[c.vendedor_id]; if(!r) return;
+  vend.forEach(v=> resumo[v.nome] = {venda:0, rec:0, comis:0, prev:0, hist:0, histMes:0});
+  vendas.forEach(x=>{ const v = vend.find(z=>z.id===x.vendedor_id); if(!v) return; const r=resumo[v.nome]; r.venda+=+x.valor_venda||0; r.rec+=+x.valor_recebido||0; });
+  comis.forEach(c=>{ const v = vend.find(z=>z.id===c.vendedor_id); if(!v) return; const r=resumo[v.nome];
     if(c.status==='GERADA' && c.competencia===mesAtu) r.comis+=+c.valor_comissao||0;
     if(c.status==='PREVISTA') r.prev+=+c.valor_comissao||0; });
+  hist.forEach(h=>{ const r=resumo[h.vendedor]; if(!r) return;
+    if(h.data_pagamento && h.data_pagamento.startsWith(String(y))){ r.hist+=+h.valor_pago||0; if(h.data_pagamento.startsWith(mesAtu)) r.histMes+=+h.valor_pago||0; } });
   el('conteudo').innerHTML = `
   <div class="cardbox">
     <h3>Novo vendedor</h3>
     <div style="display:grid;gap:8px;max-width:420px">
-      <input id="vdNome" placeholder="Nome do vendedor" style="background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+      <input id="vdNome" placeholder="Nome do vendedor (como está no ERP)" style="background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
       <input id="vdPct" type="number" step="0.01" min="0" max="100" placeholder="Comissão %" value="1.0" style="background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
       <select id="vdTipo" style="background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
         <option value="GENERICO">Genérico (sem login — vendas não vinculadas)</option>
@@ -30,22 +34,25 @@ async function abaVendedoresAdmin(){
     </div>
   </div>
   <div class="cardbox">
-    <h3>Vendedores cadastrados</h3>
+    <h3>Vendedores cadastrados — recebido em ${y} (base: recebimentos do ERP)</h3>
     <table>
-      <tr><th>Nome</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Vendas (R$)</th><th class="num">Recebido (R$)</th><th class="num">Comissão ${fmtMes(mesAtu)}</th><th class="num">Prevista</th><th>Status</th><th></th></tr>
+      <tr><th>Nome</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Recebido ${y}</th><th class="num">Recebido ${fmtMes(mesAtu)}</th><th class="num">Comissão ${y} (est. ${fmtMes(mesAtu)})</th><th>Status</th><th></th></tr>
       ${vend.map(v=>{
-        const r=resumo[v.id];
+        const r=resumo[v.nome]||{hist:0,histMes:0};
+        const com = r.hist*(v.comissao_pct/100), comMes = r.histMes*(v.comissao_pct/100);
         return `<tr><td>${v.nome}</td><td>${v.tipo==='LOGIN'?'Com login':'Genérico'}</td>
         <td class="num"><input id="pct-${v.id}" type="number" step="0.01" min="0" max="100" value="${v.comissao_pct}" style="width:70px;background:#000;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 6px;text-align:right"> %</td>
-        <td class="num">${BRL(r.venda)}</td><td class="num">${BRL(r.rec)}</td>
-        <td class="num">${BRL(r.comis)}</td><td class="num">${BRL(r.prev)}</td>
+        <td class="num">${BRL(r.hist)}</td><td class="num">${BRL(r.histMes)}</td>
+        <td class="num">${BRL(com)} <span style="color:var(--mut)">(${BRL(comMes)})</span></td>
         <td><span class="badge ${v.ativo?'g':'r'}">${v.ativo?'ATIVO':'BLOQUEADO'}</span></td>
         <td style="white-space:nowrap">
           <button onclick="salvaPct(${v.id})" style="background:none;border:1px solid var(--line);color:var(--acc);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">salvar %</button>
+          <button onclick="abaPainelVendedor(${v.id})" style="background:none;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">painel</button>
           <button onclick="toggleVend(${v.id},${v.ativo})" style="background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">${v.ativo?'bloquear':'ativar'}</button>
         </td></tr>`;
       }).join('')}
     </table>
+    <div style="font-size:11px;color:var(--mut);margin-top:8px">Comissão em estimativa sobre recebimentos do ERP enquanto a planilha de vendas não é carregada. Quando carregar, passa a valer a comissão exata por venda.</div>
   </div>`;
   const sel = el('vdTipo');
   if(sel) sel.onchange = ()=> el('vdLoginBox').style.display = sel.value==='LOGIN' ? 'block' : 'none';
@@ -98,77 +105,4 @@ async function toggleVend(id, ativo){
   status(null);
   if(error){ status('Erro: '+error.message); return; }
   limparCache(); await abaVendedoresAdmin();
-}
-
-// ---------- Painel do vendedor (mobile-first) ----------
-async function abaPainelVendedor(vendId){
-  const vend = await carregar('ovos_vendedores');
-  const v = vendId ? vend.find(x=>x.id===vendId) : vend.find(x=>x.id===ME.vend_id);
-  if(!v){ el('conteudo').innerHTML='<div class="cardbox">Vendedor não encontrado.</div>'; return; }
-  const vendas = (await carregar('ovos_vendas')).filter(r=>r.vendedor_id===v.id);
-  const comis = (await carregar('ovos_comissoes')).filter(r=>r.vendedor_id===v.id);
-  const hoje = new Date();
-  const y = hoje.getFullYear();
-  const mesAtu = `${y}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-  const mesAnt = new Date(y, hoje.getMonth()-1, 1);
-  const mesAntK = `${mesAnt.getFullYear()}-${String(mesAnt.getMonth()+1).padStart(2,'0')}`;
-  const soma = (arr,f) => arr.reduce((s,r)=>s+(+r[f]||0),0);
-  const vendasMes = k => soma(vendas.filter(r=>r.data_venda && r.data_venda.startsWith(k)),'valor_venda');
-  const recMes = k => soma(vendas.filter(r=>r.data_venda && r.data_venda.startsWith(k)),'valor_recebido');
-  const porMesV = {}, porMesC = {}, porMesR = {};
-  vendas.forEach(r=>{ if(!r.data_venda) return; const k=r.data_venda.slice(0,7);
-    porMesV[k]=(porMesV[k]||0)+(+r.valor_venda||0); porMesR[k]=(porMesR[k]||0)+(+r.valor_recebido||0); });
-  comis.filter(c=>c.status==='GERADA').forEach(c=>{ if(!c.competencia) return; const k=c.competencia.slice(0,7);
-    porMesC[k]=(porMesC[k]||0)+(+c.valor_comissao||0); });
-  const meses = [...new Set([...Object.keys(porMesV), ...Object.keys(porMesC)])].sort();
-  const comisMes = k => porMesC[k]||0;
-  const comisPrev = soma(comis.filter(c=>c.status==='PREVISTA'),'valor_comissao');
-  const anoV = soma(vendas.filter(r=>r.data_venda && r.data_venda.startsWith(String(y))),'valor_venda');
-
-  // desempenho
-  const porProd = {}, porCli = {}, porPerfil = {};
-  vendas.forEach(r=>{
-    const p = r.produto||'—'; porProd[p]=porProd[p]||{v:0,m:0}; porProd[p].v+=+r.valor_venda||0; porProd[p].m+=+r.margem_valor||0;
-    const c = r.cliente||'—'; porCli[c]=porCli[c]||{v:0,rec:0}; porCli[c].v+=+r.valor_venda||0; porCli[c].rec+=+r.valor_recebido||0;
-    const pf = r.cliente_perfil||'—'; porPerfil[pf]=(porPerfil[pf]||0)+(+r.valor_venda||0);
-  });
-  const topProd = Object.entries(porProd).sort((a,b)=>b[1].v-a[1].v).slice(0,10);
-  const topCli = Object.entries(porCli).sort((a,b)=>b[1].v-a[1].v).slice(0,10);
-  const margemReal = anoV ? (soma(vendas.filter(r=>r.data_venda&&r.data_venda.startsWith(String(y))),'margem_valor')/anoV*100) : null;
-
-  el('conteudo').innerHTML = `
-  <div class="kpis">
-    <div class="kpi"><div class="l">Vendas ${fmtMes(mesAtu)}</div><div class="v">${BRL(vendasMes(mesAtu))}</div></div>
-    <div class="kpi"><div class="l">Vendas ${fmtMes(mesAntK)}</div><div class="v">${BRL(vendasMes(mesAntK))}</div></div>
-    <div class="kpi"><div class="l">Vendas do ano</div><div class="v" style="color:var(--acc)">${BRL(anoV)}</div></div>
-    <div class="kpi"><div class="l">Comissão ${fmtMes(mesAtu)}</div><div class="v" style="color:var(--ok)">${BRL(comisMes(mesAtu))}</div><div class="s">sobre recebido</div></div>
-    <div class="kpi"><div class="l">Comissão ${fmtMes(mesAntK)}</div><div class="v">${BRL(comisMes(mesAntK))}</div></div>
-    <div class="kpi"><div class="l">Comissão prevista</div><div class="v" style="color:var(--bad)">${BRL(comisPrev)}</div><div class="s">vendas ainda não recebidas</div></div>
-    <div class="kpi"><div class="l">Recebido ${fmtMes(mesAtu)}</div><div class="v">${BRL(recMes(mesAtu))}</div></div>
-    <div class="kpi"><div class="l">Margem real ${y}</div><div class="v">${margemReal==null?'—':margemReal.toFixed(1)+'%'}</div></div>
-  </div>
-  <div class="cardbox"><h3>Vendas × recebido × comissão por mês</h3><canvas id="chVM"></canvas></div>
-  <div class="cardbox"><h3>Comissões por mês</h3><canvas id="chCM"></canvas></div>
-  <div class="two">
-  <div class="cardbox"><h3>Top produtos</h3>
-    <table><tr><th>Produto</th><th class="num">Vendas</th><th class="num">Margem</th></tr>
-    ${topProd.map(([p,d])=>`<tr><td>${p}</td><td class="num">${BRL(d.v)}</td><td class="num">${d.v? (d.m/d.v*100).toFixed(1)+'%':'—'}</td></tr>`).join('')}
-    </table></div>
-  <div class="cardbox"><h3>Top clientes</h3>
-    <table><tr><th>Cliente</th><th class="num">Vendas</th><th class="num">Recebido</th></tr>
-    ${topCli.map(([c,d])=>`<tr><td>${c}</td><td class="num">${BRL(d.v)}</td><td class="num">${BRL(d.rec)}</td></tr>`).join('')}
-    </table></div>
-  </div>
-  <div class="cardbox"><h3>Vendas por perfil de cliente</h3><canvas id="chPF"></canvas></div>`;
-
-  new Chart(el('chVM'), { type:'bar', data:{ labels:meses.map(fmtMes), datasets:[
-    { label:'Vendas', data:meses.map(k=>porMesV[k]||0), backgroundColor:'#ffd400' },
-    { label:'Recebido', data:meses.map(k=>porMesR[k]||0), backgroundColor:'#4caf50' },
-  ]}, options:{ plugins:{ legend:{ labels:{ boxWidth:12 } } } } });
-  new Chart(el('chCM'), { type:'line', data:{ labels:meses.map(fmtMes), datasets:[
-    { label:'Comissão gerada', data:meses.map(k=>porMesC[k]||0), borderColor:'#4caf50', tension:.3 },
-  ]}, options:{ plugins:{ legend:{ labels:{ boxWidth:12 } } } } });
-  const pfOrd = Object.entries(porPerfil).sort((a,b)=>b[1]-a[1]);
-  new Chart(el('chPF'), { type:'bar', data:{ labels:pfOrd.map(x=>x[0]), datasets:[{ label:'Vendas', data:pfOrd.map(x=>x[1]), backgroundColor:'#ffd400' }] },
-    options:{ indexAxis:'y', plugins:{ legend:{display:false} } } });
 }
