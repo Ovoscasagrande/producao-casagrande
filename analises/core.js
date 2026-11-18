@@ -6,9 +6,14 @@ const NUM = (n,d=0) => n==null ? '—' : n.toLocaleString('pt-BR',{maximumFracti
 const el = id => document.getElementById(id);
 let ME = null, CACHE = {};
 
-Chart.defaults.color = '#9a9a9a';
-Chart.defaults.borderColor = 'rgba(42,42,42,.9)';
-Chart.defaults.font.family = "-apple-system,'Segoe UI',Roboto,Arial,sans-serif";
+Chart.defaults.color = '#475569';
+Chart.defaults.borderColor = 'rgba(226,232,240,.9)';
+Chart.defaults.font.family = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
+Chart.defaults.plugins.tooltip.backgroundColor = '#0f172a';
+Chart.defaults.plugins.tooltip.titleColor = '#f8fafc';
+Chart.defaults.plugins.tooltip.bodyColor = '#e2e8f0';
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 8;
 
 function status(msg){ const s=el('status'); if(!msg){s.style.display='none';return;} s.textContent=msg; s.style.display='block'; }
 
@@ -42,7 +47,7 @@ async function aposLogin(){
   }
   el('loginScreen').style.display='none';
   el('app').style.display='block';
-  el('userChip').innerHTML = `<b>${ME.nome}</b> · ${ME.perfil} <button onclick="logout()">sair</button>`;
+  el('userChip').innerHTML = `<b>${ME.nome}</b> · <span>${ME.perfil}</span> <button onclick="logout()">sair</button>`;
   montarAbas();
   await irAba(ME.tipo==='VENDEDOR' ? 'meuvend' : 'hoje');
 }
@@ -55,11 +60,13 @@ sb.auth.onAuthStateChange((ev)=>{
 });
 
 // ---------- dados ----------
-async function carregar(tabla, cols='*'){
-  const key = tabla+':'+cols;
+async function carregar(tabla, cols='*', filtro=null){
+  const key = tabla+':'+cols+':'+(filtro||'');
   if(CACHE[key]) return CACHE[key];
   status('Carregando '+tabla+'…');
-  const { data, error } = await sb.from(tabla).select(cols);
+  let q = sb.from(tabla).select(cols);
+  if(filtro) q = q.or(filtro);
+  const { data, error } = await q;
   status(null);
   if(error){ console.error(tabla, error); throw error; }
   CACHE[key] = data;
@@ -88,7 +95,7 @@ function montarAbas(){
 async function irAba(id){
   ABA = id;
   abasDoUsuario().forEach(([k])=>{ const b=el('tab-'+k); if(b) b.classList.toggle('on', k===id); });
-  el('conteudo').innerHTML = '<div class="cardbox">Carregando…</div>';
+  el('conteudo').innerHTML = '<div class="cardbox" style="color:var(--mut)">Carregando indicadores…</div>';
   try{
     if(id==='hoje') await abaHoje();
     else if(id==='receber') await abaReceber();
@@ -100,6 +107,6 @@ async function irAba(id){
     else if(id==='vendedores') await abaVendedoresAdmin();
     else if(id==='meuvend') await abaPainelVendedor(null);
   }catch(e){
-    el('conteudo').innerHTML = `<div class="cardbox">Erro ao carregar: ${e.message||e}</div>`;
+    el('conteudo').innerHTML = `<div class="cardbox" style="color:var(--bad)">Erro ao carregar: ${e.message||e}</div>`;
   }
 }

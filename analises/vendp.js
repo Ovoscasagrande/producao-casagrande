@@ -47,32 +47,40 @@ async function abaPainelVendedor(vendId){
   const anoV = soma(vendas.filter(r=>r.data_venda && r.data_venda.startsWith(String(y))),'valor_venda');
 
   el('conteudo').innerHTML = `
-  <div class="kpis">
-    <div class="kpi"><div class="l">Recebido ${fmtMes(mesAtu)}</div><div class="v">${BRL(recMesAtu)}</div><div class="s">base ERP ${fmtMes(mesAtu)}</div></div>
-    <div class="kpi"><div class="l">Recebido ${fmtMes(mesAntK)}</div><div class="v">${BRL(recMesAnt)}</div></div>
-    <div class="kpi"><div class="l">Recebido no ano</div><div class="v" style="color:var(--acc)">${BRL(recAno)}</div></div>
-    <div class="kpi"><div class="l">Comissão ${fmtMes(mesAtu)}</div><div class="v" style="color:var(--ok)">${BRL(recMesAtu*pct/100)}</div><div class="s">${pct}% sobre recebido</div></div>
-    <div class="kpi"><div class="l">Comissão ${fmtMes(mesAntK)}</div><div class="v">${BRL(recMesAnt*pct/100)}</div></div>
-    <div class="kpi"><div class="l">Comissão do ano</div><div class="v">${BRL(recAno*pct/100)}</div><div class="s">estimada · paga mês seguinte</div></div>
-    ${temVendas?`<div class="kpi"><div class="l">Vendas ${fmtMes(mesAtu)}</div><div class="v">${BRL(vendasMes(mesAtu))}</div></div>
-    <div class="kpi"><div class="l">Vendas do ano</div><div class="v">${BRL(anoV)}</div></div>`:''}
+  <div class="section-head">
+    <h2>Painel Comercial · ${v.nome}</h2>
+    ${ME.tipo!=='VENDEDOR'?'<button class="btn-sm" onclick="abaVendedoresAdmin()">← Voltar à lista</button>':`<span class="meta">Comissão vigente: ${pct}%</span>`}
   </div>
-  <div class="cardbox"><h3>Recebimentos por mês (R$)</h3><canvas id="chRM"></canvas></div>
-  <div class="cardbox"><h3>Comissão estimada por mês (R$)</h3><canvas id="chCE"></canvas></div>
-  <div class="cardbox"><h3>Top 10 clientes ${y} (por recebido)</h3>
-    <table><tr><th>Cliente</th><th class="num">Recebido</th><th class="num">Comissão</th></tr>
-    ${topCli.map(([c,val])=>`<tr><td>${c}</td><td class="num">${BRL(val)}</td><td class="num">${BRL(val*pct/100)}</td></tr>`).join('')}
-    </table></div>
-  <div class="cardbox"><h3>Últimos recebimentos</h3>
-    <table><tr><th>Data</th><th>Cliente</th><th class="num">Valor</th></tr>
-    ${hist.slice(0).sort((a,b)=>(b.data_pagamento||'').localeCompare(a.data_pagamento||'')).slice(0,12).map(r=>`<tr><td>${fmtData(r.data_pagamento)}</td><td>${r.cliente||'—'}</td><td class="num">${BRL(r.valor_pago)}</td></tr>`).join('')}
-    </table></div>
+  <div class="kpis">
+    <div class="kpi k-slate"><div class="l">Recebido ${fmtMes(mesAtu)}</div><div class="v">${BRL(recMesAtu)}</div><div class="s">base ERP ${fmtMes(mesAtu)}</div></div>
+    <div class="kpi k-slate"><div class="l">Recebido ${fmtMes(mesAntK)}</div><div class="v">${BRL(recMesAnt)}</div></div>
+    <div class="kpi k-gold"><div class="l">Recebido no ano</div><div class="v" style="color:#d97706">${BRL(recAno)}</div></div>
+    <div class="kpi k-ok"><div class="l">Comissão ${fmtMes(mesAtu)}</div><div class="v" style="color:var(--ok)">${BRL(recMesAtu*pct/100)}</div><div class="s">${pct}% sobre recebido</div></div>
+    <div class="kpi k-ok"><div class="l">Comissão ${fmtMes(mesAntK)}</div><div class="v">${BRL(recMesAnt*pct/100)}</div></div>
+    <div class="kpi k-ok"><div class="l">Comissão do ano</div><div class="v">${BRL(recAno*pct/100)}</div><div class="s">estimada · paga mês seguinte</div></div>
+    ${temVendas?`<div class="kpi k-gold"><div class="l">Vendas ${fmtMes(mesAtu)}</div><div class="v">${BRL(vendasMes(mesAtu))}</div></div>
+    <div class="kpi k-gold"><div class="l">Vendas do ano</div><div class="v">${BRL(anoV)}</div></div>`:''}
+  </div>
+  <div class="two">
+    <div class="cardbox"><h3>Recebimentos por mês (R$)</h3><canvas id="chRM"></canvas></div>
+    <div class="cardbox"><h3>Comissão estimada por mês (R$)</h3><canvas id="chCE"></canvas></div>
+  </div>
+  <div class="two">
+    <div class="cardbox"><h3>Top 10 clientes ${y} (por recebido)</h3>
+      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th class="num">Recebido</th><th class="num">Comissão</th></tr></thead><tbody>
+      ${topCli.map(([c,val])=>`<tr><td>${c}</td><td class="num">${BRL(val)}</td><td class="num" style="color:var(--ok);font-weight:600">${BRL(val*pct/100)}</td></tr>`).join('')}
+      </tbody></table></div></div>
+    <div class="cardbox"><h3>Últimos recebimentos</h3>
+      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Cliente</th><th class="num">Valor</th></tr></thead><tbody>
+      ${hist.slice(0).sort((a,b)=>(b.data_pagamento||'').localeCompare(a.data_pagamento||'')).slice(0,12).map(r=>`<tr><td>${fmtData(r.data_pagamento)}</td><td>${r.cliente||'—'}</td><td class="num">${BRL(r.valor_pago)}</td></tr>`).join('')}
+      </tbody></table></div></div>
+  </div>
   ${temVendas?'':'<div class="cardbox" style="font-size:12px;color:var(--mut)">Análises de produtos, margem e perfil de clientes entram quando a planilha de vendas for carregada.</div>'}`;
 
   new Chart(el('chRM'), { type:'bar', data:{ labels:meses.map(fmtMes), datasets:[
-    { label:'Recebido', data:meses.map(k=>porMes[k]||0), backgroundColor:'#ffd400' },
+    { label:'Recebido', data:meses.map(k=>porMes[k]||0), backgroundColor:'#f59e0b', borderRadius:6 },
   ]}, options:{ plugins:{ legend:{display:false} } } });
   new Chart(el('chCE'), { type:'line', data:{ labels:meses.map(fmtMes), datasets:[
-    { label:`Comissão ${pct}%`, data:meses.map(k=>(porMes[k]||0)*pct/100), borderColor:'#4caf50', tension:.3 },
+    { label:`Comissão ${pct}%`, data:meses.map(k=>(porMes[k]||0)*pct/100), borderColor:'#16a34a', backgroundColor:'rgba(22,163,74,.10)', borderWidth:2.5, tension:.3, pointRadius:3 },
   ]}, options:{ plugins:{ legend:{display:false} } } });
 }

@@ -10,18 +10,24 @@ async function abaProducao(){
   const tot25 = rows.filter(r=>r.ano===2025).reduce((s,r)=>s+(+r.caixas||0),0);
   const tot26 = rows.filter(r=>r.ano===2026).reduce((s,r)=>s+(+r.caixas||0),0);
   el('conteudo').innerHTML = `
-  <div class="kpis">
-    <div class="kpi"><div class="l">Produção 2025</div><div class="v">${NUM(tot25,1)} cx</div></div>
-    <div class="kpi"><div class="l">Produção 2026</div><div class="v" style="color:var(--acc)">${NUM(tot26,1)} cx</div></div>
-    <div class="kpi"><div class="l">Variação</div><div class="v">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">2026 vs 2025</div></div>
+  <div class="section-head">
+    <h2>Produção (Embalagem &amp; Classificação)</h2>
+    <span class="meta">Comparativo anual em caixas</span>
   </div>
-  <div class="cardbox"><h3>Caixas produzidas por mês</h3><canvas id="chProdMes"></canvas></div>
-  <div class="cardbox"><h3>Top 10 apresentações 2026</h3><canvas id="chProdAp"></canvas></div>`;
+  <div class="kpis">
+    <div class="kpi k-slate"><div class="l">Produção 2025</div><div class="v">${NUM(tot25,1)} cx</div><div class="s">ano anterior</div></div>
+    <div class="kpi k-gold"><div class="l">Produção 2026</div><div class="v" style="color:#d97706">${NUM(tot26,1)} cx</div><div class="s">acumulado atual</div></div>
+    <div class="kpi k-ok"><div class="l">Variação</div><div class="v" style="color:${tot26>=tot25?'var(--ok)':'var(--bad)'}">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">2026 vs 2025</div></div>
+  </div>
+  <div class="two">
+    <div class="cardbox"><h3>Caixas produzidas por mês</h3><canvas id="chProdMes"></canvas></div>
+    <div class="cardbox"><h3>Top 10 apresentações 2026</h3><canvas id="chProdAp"></canvas></div>
+  </div>`;
   new Chart(el('chProdMes'), { type:'bar', data:{ labels:meses, datasets:[
-    { label:'2025', data:meses.map(m=>porAnoMes[m][2025]), backgroundColor:'#5a5a5a' },
-    { label:'2026', data:meses.map(m=>porAnoMes[m][2026]), backgroundColor:'#ffd400' },
-  ]}, options:{ plugins:{ legend:{ labels:{ boxWidth:12 } } } } });
-  new Chart(el('chProdAp'), { type:'bar', data:{ labels:apOrd.map(x=>x[0]), datasets:[{ label:'Caixas', data:apOrd.map(x=>x[1]), backgroundColor:'#ffd400' }] },
+    { label:'2025', data:meses.map(m=>porAnoMes[m][2025]), backgroundColor:'#94a3b8', borderRadius:5 },
+    { label:'2026', data:meses.map(m=>porAnoMes[m][2026]), backgroundColor:'#f59e0b', borderRadius:5 },
+  ]}, options:{ plugins:{ legend:{ labels:{ usePointStyle:true, boxWidth:10 } } } } });
+  new Chart(el('chProdAp'), { type:'bar', data:{ labels:apOrd.map(x=>x[0]), datasets:[{ label:'Caixas', data:apOrd.map(x=>x[1]), backgroundColor:'#0f172a', borderRadius:5 }] },
     options:{ indexAxis:'y', plugins:{ legend:{display:false} } } });
 }
 
@@ -37,18 +43,24 @@ async function abaCompras(){
   const tot25 = rows.filter(r=>r.ano===2025).reduce((s,r)=>s+(+r.caixas||0),0);
   const tot26 = rows.filter(r=>r.ano===2026).reduce((s,r)=>s+(+r.caixas||0),0);
   el('conteudo').innerHTML = `
-  <div class="kpis">
-    <div class="kpi"><div class="l">Compras 2025</div><div class="v">${NUM(tot25,1)} cx</div></div>
-    <div class="kpi"><div class="l">Compras 2026</div><div class="v" style="color:var(--acc)">${NUM(tot26,1)} cx</div></div>
-    <div class="kpi"><div class="l">Variação</div><div class="v">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">2026 vs 2025</div></div>
+  <div class="section-head">
+    <h2>Compras de Ovos (Granjas)</h2>
+    <span class="meta">Entrada de matéria-prima em caixas</span>
   </div>
-  <div class="cardbox"><h3>Caixas compradas por mês</h3><canvas id="chCompMes"></canvas></div>
-  <div class="cardbox"><h3>Top 10 granjas 2026</h3><canvas id="chCompGr"></canvas></div>`;
+  <div class="kpis">
+    <div class="kpi k-slate"><div class="l">Compras 2025</div><div class="v">${NUM(tot25,1)} cx</div><div class="s">ano anterior</div></div>
+    <div class="kpi k-gold"><div class="l">Compras 2026</div><div class="v" style="color:#d97706">${NUM(tot26,1)} cx</div><div class="s">acumulado atual</div></div>
+    <div class="kpi k-ok"><div class="l">Variação</div><div class="v" style="color:${tot26>=tot25?'var(--ok)':'var(--bad)'}">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">2026 vs 2025</div></div>
+  </div>
+  <div class="two">
+    <div class="cardbox"><h3>Caixas compradas por mês</h3><canvas id="chCompMes"></canvas></div>
+    <div class="cardbox"><h3>Top 10 granjas 2026</h3><canvas id="chCompGr"></canvas></div>
+  </div>`;
   new Chart(el('chCompMes'), { type:'bar', data:{ labels:meses, datasets:[
-    { label:'2025', data:meses.map(m=>porAnoMes[m][2025]), backgroundColor:'#5a5a5a' },
-    { label:'2026', data:meses.map(m=>porAnoMes[m][2026]), backgroundColor:'#ffd400' },
-  ]}, options:{ plugins:{ legend:{ labels:{ boxWidth:12 } } } } });
-  new Chart(el('chCompGr'), { type:'bar', data:{ labels:gOrd.map(x=>x[0]), datasets:[{ label:'Caixas', data:gOrd.map(x=>x[1][2026]), backgroundColor:'#ffd400' }] },
+    { label:'2025', data:meses.map(m=>porAnoMes[m][2025]), backgroundColor:'#94a3b8', borderRadius:5 },
+    { label:'2026', data:meses.map(m=>porAnoMes[m][2026]), backgroundColor:'#f59e0b', borderRadius:5 },
+  ]}, options:{ plugins:{ legend:{ labels:{ usePointStyle:true, boxWidth:10 } } } } });
+  new Chart(el('chCompGr'), { type:'bar', data:{ labels:gOrd.map(x=>x[0]), datasets:[{ label:'Caixas', data:gOrd.map(x=>x[1][2026]), backgroundColor:'#0f172a', borderRadius:5 }] },
     options:{ indexAxis:'y', plugins:{ legend:{display:false} } } });
 }
 
@@ -63,22 +75,26 @@ async function abaClientes(){
   rs.forEach(r=>{ const v=r.vendedor_principal||'—'; porVend[v]=porVend[v]||{tot:0,venc:0}; porVend[v].tot+=+r.total_aberto||0; porVend[v].venc+=+r.vencido||0; });
   const vOrd = Object.entries(porVend).sort((a,b)=>b[1].tot-a[1].tot).slice(0,10);
   el('conteudo').innerHTML = `
-  <div class="kpis">
-    <div class="kpi"><div class="l">Carteira aberta</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} clientes · base ${fmtData(base)}</div></div>
-    <div class="kpi"><div class="l">Vencido</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${(100*venc/tot).toFixed(1)}% da carteira</div></div>
+  <div class="section-head">
+    <h2>Carteira de Clientes &amp; Cobrança</h2>
+    <span class="meta">Posição por cliente · base ${fmtData(base)}</span>
   </div>
-  <div class="cardbox"><h3>Carteira por vendedor (R$)</h3><canvas id="chVend"></canvas></div>
-  <div class="cardbox"><h3>Clientes por vencido</h3>
-    <table><tr><th>Cliente</th><th>Vendedor</th><th class="num">Aberto</th><th class="num">Vencido</th><th class="num">Maior atraso</th><th>Status</th></tr>
+  <div class="kpis">
+    <div class="kpi k-gold"><div class="l">Carteira aberta</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} clientes · base ${fmtData(base)}</div></div>
+    <div class="kpi k-bad"><div class="l">Vencido</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${tot?(100*venc/tot).toFixed(1):'0.0'}% da carteira</div></div>
+  </div>
+  <div class="cardbox"><h3>Carteira por vendedor (R$)</h3><canvas id="chVend" height="90"></canvas></div>
+  <div class="cardbox"><h3>Clientes por vencido (Top 20)</h3>
+    <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Vendedor</th><th class="num">Aberto</th><th class="num">Vencido</th><th class="num">Maior atraso</th><th>Status</th></tr></thead><tbody>
     ${rs.slice(0,20).map(r=>{
       const st = r.status_cobranca||''; const cls = st.includes('ATRASADO')?'r':(st.includes('HOJE')?'y':'g');
-      return `<tr><td>${r.cliente}</td><td>${r.vendedor_principal||'—'}</td><td class="num">${BRL(r.total_aberto)}</td><td class="num" style="color:${r.vencido>0?'var(--bad)':'inherit'}">${BRL(r.vencido)}</td><td class="num">${r.maior_atraso_dias??'—'} d</td><td><span class="badge ${cls}">${st}</span></td></tr>`;
+      return `<tr><td><b>${r.cliente}</b></td><td>${r.vendedor_principal||'—'}</td><td class="num">${BRL(r.total_aberto)}</td><td class="num" style="color:${r.vencido>0?'var(--bad)':'inherit'};font-weight:${r.vencido>0?'700':'400'}">${BRL(r.vencido)}</td><td class="num">${r.maior_atraso_dias??'—'} d</td><td><span class="badge ${cls}">${st}</span></td></tr>`;
     }).join('')}
-    </table></div>`;
+    </tbody></table></div></div>`;
   new Chart(el('chVend'), { type:'bar', data:{ labels:vOrd.map(x=>x[0]), datasets:[
-    { label:'Aberto', data:vOrd.map(x=>x[1].tot), backgroundColor:'#ffd400' },
-    { label:'Vencido', data:vOrd.map(x=>x[1].venc), backgroundColor:'#ff5252' },
-  ]}, options:{ indexAxis:'y', plugins:{ legend:{ labels:{ boxWidth:12 } } } } });
+    { label:'Aberto', data:vOrd.map(x=>x[1].tot), backgroundColor:'#f59e0b', borderRadius:5 },
+    { label:'Vencido', data:vOrd.map(x=>x[1].venc), backgroundColor:'#dc2626', borderRadius:5 },
+  ]}, options:{ indexAxis:'y', plugins:{ legend:{ labels:{ usePointStyle:true, boxWidth:10 } } } } });
 }
 
 // ---------- Janela ERP ----------
@@ -91,19 +107,24 @@ async function abaJanela(){
   const tp = pg.reduce((s,r)=>s+(+r.valor_pago||0),0);
   const tr = rc.reduce((s,r)=>s+(+r.valor_recebido||0),0);
   el('conteudo').innerHTML = `
+  <div class="section-head">
+    <h2>Janela de Liquidação ERP</h2>
+    <span class="meta">Movimentação realizada · até ${fmtData(base)}</span>
+  </div>
   <div class="kpis">
-    <div class="kpi"><div class="l">Recebido na janela</div><div class="v" style="color:var(--ok)">${BRL(tr)}</div><div class="s">${rc.length} títulos · até ${fmtData(base)}</div></div>
-    <div class="kpi"><div class="l">Pago na janela</div><div class="v">${BRL(tp)}</div><div class="s">${pg.length} títulos</div></div>
+    <div class="kpi k-ok"><div class="l">Recebido na janela</div><div class="v" style="color:var(--ok)">${BRL(tr)}</div><div class="s">${rc.length} títulos · até ${fmtData(base)}</div></div>
+    <div class="kpi k-slate"><div class="l">Pago na janela</div><div class="v">${BRL(tp)}</div><div class="s">${pg.length} títulos</div></div>
+    <div class="kpi ${tr>=tp?'k-ok':'k-bad'}"><div class="l">Saldo da janela</div><div class="v" style="color:${tr>=tp?'var(--ok)':'var(--bad)'}">${BRL(tr-tp)}</div><div class="s">recebido menos pago</div></div>
   </div>
   <div class="two">
   <div class="cardbox"><h3>Últimos recebimentos</h3>
-    <table><tr><th>Venc.</th><th>Cliente</th><th class="num">Valor</th></tr>
-    ${rc.slice(-12).reverse().map(r=>`<tr><td>${fmtData(r.vencimento)}</td><td>${r.cliente||'—'}</td><td class="num">${BRL(r.valor_recebido)}</td></tr>`).join('')}
-    </table></div>
+    <div class="table-wrap"><table><thead><tr><th>Venc.</th><th>Cliente</th><th class="num">Valor</th></tr></thead><tbody>
+    ${rc.slice(-12).reverse().map(r=>`<tr><td>${fmtData(r.vencimento)}</td><td>${r.cliente||'—'}</td><td class="num" style="color:var(--ok);font-weight:600">${BRL(r.valor_recebido)}</td></tr>`).join('')}
+    </tbody></table></div></div>
   <div class="cardbox"><h3>Últimos pagamentos</h3>
-    <table><tr><th>Venc.</th><th>Fornecedor</th><th class="num">Valor</th></tr>
+    <div class="table-wrap"><table><thead><tr><th>Venc.</th><th>Fornecedor</th><th class="num">Valor</th></tr></thead><tbody>
     ${pg.slice(-12).reverse().map(r=>`<tr><td>${fmtData(r.vencimento)}</td><td>${r.fornecedor||'—'}</td><td class="num">${BRL(r.valor_pago)}</td></tr>`).join('')}
-    </table></div>
+    </tbody></table></div></div>
   </div>`;
 }
 

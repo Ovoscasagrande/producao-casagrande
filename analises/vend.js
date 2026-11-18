@@ -16,43 +16,49 @@ async function abaVendedoresAdmin(){
   hist.forEach(h=>{ const r=resumo[h.vendedor]; if(!r) return;
     if(h.data_pagamento && h.data_pagamento.startsWith(String(y))){ r.hist+=+h.valor_pago||0; if(h.data_pagamento.startsWith(mesAtu)) r.histMes+=+h.valor_pago||0; } });
   el('conteudo').innerHTML = `
+  <div class="section-head">
+    <h2>Equipe Comercial &amp; Comissões</h2>
+    <span class="meta">Gestão de acessos e percentuais</span>
+  </div>
   <div class="cardbox">
     <h3>Novo vendedor</h3>
-    <div style="display:grid;gap:8px;max-width:420px">
-      <input id="vdNome" placeholder="Nome do vendedor (como está no ERP)" style="background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
-      <input id="vdPct" type="number" step="0.01" min="0" max="100" placeholder="Comissão %" value="1.0" style="background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
-      <select id="vdTipo" style="background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+    <div style="display:grid;gap:10px;max-width:460px">
+      <input id="vdNome" class="inp" placeholder="Nome do vendedor (como está no ERP)">
+      <input id="vdPct" class="inp" type="number" step="0.01" min="0" max="100" placeholder="Comissão %" value="1.0">
+      <select id="vdTipo" class="inp">
         <option value="GENERICO">Genérico (sem login — vendas não vinculadas)</option>
         <option value="LOGIN">Com login (acesso pelo celular)</option>
       </select>
       <div id="vdLoginBox" style="display:none">
-        <input id="vdEmail" placeholder="E-mail de acesso" style="width:100%;background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin-bottom:8px">
-        <input id="vdSenha" type="password" placeholder="Senha inicial" style="width:100%;background:#000;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 12px">
+        <input id="vdEmail" class="inp" placeholder="E-mail de acesso" style="width:100%;margin-bottom:8px">
+        <input id="vdSenha" class="inp" type="password" placeholder="Senha inicial" style="width:100%">
       </div>
-      <button onclick="criarVendedor()" style="background:var(--acc);color:#000;border:none;border-radius:8px;padding:10px;font-weight:700;cursor:pointer">Cadastrar</button>
+      <button onclick="criarVendedor()" class="btn-pri">Cadastrar vendedor</button>
       <div id="vdMsg" style="font-size:12px;color:var(--mut);min-height:14px"></div>
     </div>
   </div>
   <div class="cardbox">
     <h3>Vendedores cadastrados — recebido em ${y} (base: recebimentos do ERP)</h3>
-    <table>
-      <tr><th>Nome</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Recebido ${y}</th><th class="num">Recebido ${fmtMes(mesAtu)}</th><th class="num">Comissão ${y} (est. ${fmtMes(mesAtu)})</th><th>Status</th><th></th></tr>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Nome</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Recebido ${y}</th><th class="num">Recebido ${fmtMes(mesAtu)}</th><th class="num">Comissão ${y} (est. ${fmtMes(mesAtu)})</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody>
       ${vend.map(v=>{
         const r=resumo[v.nome]||{hist:0,histMes:0};
         const com = r.hist*(v.comissao_pct/100), comMes = r.histMes*(v.comissao_pct/100);
-        return `<tr><td>${v.nome}</td><td>${v.tipo==='LOGIN'?'Com login':'Genérico'}</td>
-        <td class="num"><input id="pct-${v.id}" type="number" step="0.01" min="0" max="100" value="${v.comissao_pct}" style="width:70px;background:#000;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 6px;text-align:right"> %</td>
+        return `<tr><td><b>${v.nome}</b></td><td>${v.tipo==='LOGIN'?'Com login':'Genérico'}</td>
+        <td class="num"><input id="pct-${v.id}" class="inp" type="number" step="0.01" min="0" max="100" value="${v.comissao_pct}" style="width:74px;padding:5px 7px;text-align:right"> %</td>
         <td class="num">${BRL(r.hist)}</td><td class="num">${BRL(r.histMes)}</td>
-        <td class="num">${BRL(com)} <span style="color:var(--mut)">(${BRL(comMes)})</span></td>
+        <td class="num"><b>${BRL(com)}</b> <span style="color:var(--mut)">(${BRL(comMes)})</span></td>
         <td><span class="badge ${v.ativo?'g':'r'}">${v.ativo?'ATIVO':'BLOQUEADO'}</span></td>
-        <td style="white-space:nowrap">
-          <button onclick="salvaPct(${v.id})" style="background:none;border:1px solid var(--line);color:var(--acc);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">salvar %</button>
-          <button onclick="abaPainelVendedor(${v.id})" style="background:none;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">painel</button>
-          <button onclick="toggleVend(${v.id},${v.ativo})" style="background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px">${v.ativo?'bloquear':'ativar'}</button>
+        <td style="white-space:nowrap;display:flex;gap:4px">
+          <button onclick="salvaPct(${v.id})" class="btn-sm acc">salvar %</button>
+          <button onclick="abaPainelVendedor(${v.id})" class="btn-sm">painel</button>
+          <button onclick="toggleVend(${v.id},${v.ativo})" class="btn-sm">${v.ativo?'bloquear':'ativar'}</button>
         </td></tr>`;
       }).join('')}
-    </table>
-    <div style="font-size:11px;color:var(--mut);margin-top:8px">Comissão em estimativa sobre recebimentos do ERP enquanto a planilha de vendas não é carregada. Quando carregar, passa a valer a comissão exata por venda.</div>
+      </tbody>
+    </table></div>
+    <div style="font-size:11.5px;color:var(--mut);margin-top:10px">Comissão em estimativa sobre recebimentos do ERP enquanto a planilha de vendas não é carregada. Quando carregar, passa a valer a comissão exata por venda.</div>
   </div>`;
   const sel = el('vdTipo');
   if(sel) sel.onchange = ()=> el('vdLoginBox').style.display = sel.value==='LOGIN' ? 'block' : 'none';
