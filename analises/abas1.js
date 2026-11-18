@@ -3,19 +3,23 @@
 // vencido em aberto. Produção e compras = LANÇAMENTOS do ERP (últimos 7 dias e mês
 // até o último dia da extração — não são "programados" como títulos).
 async function abaHoje(){
-  const [serie, rec, pag, prod, comp] = await Promise.all([
+  const hoje = new Date();
+  const y = hoje.getFullYear(), m = hoje.getMonth(), d = hoje.getDate();
+  const ISO = dt => dt.toISOString().slice(0,10);
+  const hojeISO = ISO(new Date(y, m, d));
+  const [serie, rec, pag, prod, comp, recHojeHist, pagHojeHist] = await Promise.all([
     carregar('ovos_serie_diaria'),
     carregar('ovos_receber','vencimento,saldo,cliente,dias_atraso'),
     carregar('ovos_pagar','vencimento,saldo,fornecedor,dias_venc,centro_custo'),
     carregar('ovos_producao','data,caixas'),
     carregar('ovos_compras','data,caixas'),
+    carregar('ovos_recebidos_historico','valor_pago','data_pagamento=eq.'+hojeISO),
+    carregar('ovos_pagos_historico','valor','vencimento=eq.'+hojeISO),
   ]);
+  const recUltDia = recHojeHist.reduce((s,r)=>s+(+r.valor_pago||0),0);
+  const pagUltDia = pagHojeHist.reduce((s,r)=>s+(+r.valor||0),0);
   serie.sort((a,b)=> a.data_base<b.data_base?-1:1);
   const u = serie[serie.length-1];
-  const hoje = new Date();
-  const y = hoje.getFullYear(), m = hoje.getMonth(), d = hoje.getDate();
-  const ISO = dt => dt.toISOString().slice(0,10);
-  const hojeISO = ISO(new Date(y, m, d));
   const faltam = hoje.getDay()===0 ? 0 : 7 - hoje.getDay(); // semana vai até o domingo
   const fimSemanaISO = ISO(new Date(y, m, d + faltam));
   const fimMesISO = ISO(new Date(y, m+1, 0));
@@ -34,17 +38,17 @@ async function abaHoje(){
   const recVenc = rec.filter(r=>r.vencimento<hojeISO);
   const pagVenc = pag.filter(r=>r.vencimento<hojeISO);
 
+  // --- produção e compras: semana = últimos 7 dias com dados; mês = do dia 1 até o corte ---
+  const inicioSemanaISO = ISO(new Date(y, m, d-6));
+  const prodSem = cxJ(prod,inicioSemanaISO,maxDataPC), prodMes = cxJ(prod,`${y}-${String(m+1).padStart(2,'0')}-01`,maxDataPC);
+  const compSem = cxJ(comp,inicioSemanaISO,maxDataPC), compMes = cxJ(comp,`${y}-${String(m+1).padStart(2,'0')}-01`,maxDataPC);
+
   // --- saldo do dia (programado: vence hoje) ---
   const recHoje = soma(janela(rec,'vencimento',hojeISO,hojeISO));
   const pagHoje = soma(janela(pag,'vencimento',hojeISO,hojeISO));
 
   // --- janela de datas para produção/compras ---
   const cxJ = (rows,a,b) => soma(janela(rows,'data',a,b),'caixas');
-  // semana = últimos 7 dias com dados; mês = do dia 1 até o corte da extração
-  const inicioSemanaISO = ISO(new Date(y, m, d-6));
-  const mesInicioISO = `${y}-${String(m+1).padStart(2,'0')}-01`;
-  const prodSem = cxJ(prod,inicioSemanaISO,maxDataPC), prodMes = cxJ(prod,mesInicioISO,maxDataPC);
-  const compSem = cxJ(comp,inicioSemanaISO,maxDataPC), compMes = cxJ(comp,mesInicioISO,maxDataPC);
 
   // --- agenda por dia (para o gráfico) ---
   const porDia = {};
@@ -56,12 +60,12 @@ async function abaHoje(){
   el('conteudo').innerHTML = `
   <div class="section-head">
     <h2>Hoje</h2>
-    <span class="meta">programação de ${fmtData(hojeISO)} a ${fmtData(fimMesISO)} · posição ${fmtData(u.data_base)} · produção/compras até ${corteLabel}</span>
+    <span class="meta">programação de ${fmtData(hojeISO)} a ${fmtData(fimMesISO)} · posição ${fmtData(u.data_base)}</span>
   </div>
   <div class="kpis">
-    <div class="kpi ${recHoje-pagHoje>=0?'k-ok':'k-bad'}"><div class="l">Saldo do dia (hoje)</div>
+    <div class="kpi ${recHoje-pagHoje>=0?'k-ok':'k-bad'}"><div class="l">Saldo previsto de hoje</div>
       <div class="v" style="color:${recHoje-pagHoje>=0?'var(--ok)':'var(--bad)'}">${BRL(recHoje-pagHoje)}</div>
-      <div class="s">receber ${BRL(recHoje)} − pagar ${BRL(pagHoje)}</div></div>
+      <div class="s">vencem hoje: receber ${BRL(recHoje)} − pagar ${BRL(pagHoje)}</div></div>
     <div class="kpi k-ok"><div class="l">A receber na semana</div><div class="v">${BRL(soma(recSem))}</div><div class="s">${recSem.length} títulos · até ${fmtData(fimSemanaISO)}</div></div>
     <div class="kpi k-bad"><div class="l">A pagar na semana</div><div class="v">${BRL(soma(pagSem))}</div><div class="s">${pagSem.length} títulos · até ${fmtData(fimSemanaISO)}</div></div>
     <div class="kpi ${soma(recSem)-soma(pagSem)>=0?'k-ok':'k-bad'}"><div class="l">Saldo da semana</div>
@@ -72,6 +76,9 @@ async function abaHoje(){
       <div class="v" style="color:${soma(recMes)-soma(pagMes)>=0?'var(--ok)':'var(--bad)'}">${BRL(soma(recMes)-soma(pagMes))}</div><div class="s">receber − pagar</div></div>
     <div class="kpi k-slate"><div class="l">Produção semana · mês</div><div class="v">${NUM(prodSem,0)} · ${NUM(prodMes,0)} cx</div><div class="s">últimos 7 dias · mês até ${corteLabel}</div></div>
     <div class="kpi k-slate"><div class="l">Compras semana · mês</div><div class="v">${NUM(compSem,0)} · ${NUM(compMes,0)} cx</div><div class="s">últimos 7 dias · mês até ${corteLabel}</div></div>
+    <div class="kpi ${recUltDia>=pagUltDia?'k-ok':'k-bad'}"><div class="l">Realizado de hoje (caixa)</div>
+      <div class="v" style="color:${recUltDia>=pagUltDia?'var(--ok)':'var(--bad)'}">${BRL(recUltDia-pagUltDia)}</div>
+      <div class="s">entrou ${BRL(recUltDia)} · saiu ${BRL(pagUltDia)}</div></div>
     <div class="kpi k-gold"><div class="l">Vencido em aberto</div><div class="v" style="color:var(--bad)">${BRL(soma(recVenc))}</div><div class="s">receber · pagar ${BRL(soma(pagVenc))}</div></div>
   </div>
 
@@ -105,7 +112,8 @@ async function abaHoje(){
   const lblAg = dias.map(dt=>dt.slice(8,10)+'/'+dt.slice(5,7));
   const recAg = dias.map(dt=>porDia[dt].filter(x=>x.tipo==='R').reduce((s,x)=>s+x.v,0));
   const pagAg = dias.map(dt=>-porDia[dt].filter(x=>x.tipo==='P').reduce((s,x)=>s+x.v,0));
-  new Chart(el('chAgenda'), { type:'bar', data:{ labels:lblAg, datasets:[
+  if(!dias.length) el('chAgenda').closest('.cardbox').innerHTML = '<div class="cardbox-head"><h3>Agenda do mês — por dia (R$)</h3></div><div style="color:var(--mut);padding:12px 0">Sem vencimentos programados no período.</div>';
+  else new Chart(el('chAgenda'), { type:'bar', data:{ labels:lblAg, datasets:[
     { label:'Receber', data:recAg, backgroundColor:'#16a34a', borderRadius:3, stack:'a' },
     { label:'Pagar', data:pagAg, backgroundColor:'#dc2626', borderRadius:3, stack:'a' },
   ]}, options:{
@@ -157,6 +165,11 @@ async function abaReceber(){
   const top = Object.entries(porCli).sort((a,b)=>b[1].venc-a[1].venc).slice(0,12);
   const tot = rs.reduce((s,r)=>s+(+r.saldo||0),0), venc = rs.filter(r=>r.dias_atraso>0).reduce((s,r)=>s+(+r.saldo||0),0);
   el('conteudo').innerHTML = `
+  <div class="section-head">
+    <h2>Contas a Receber</h2>
+    <span class="meta">carteira aberta · base ${fmtData(base)}</span>
+    <button id="csvRec" class="btn-sm" style="margin-left:auto">baixar CSV</button>
+  </div>
   <div class="kpis">
     <div class="kpi k-gold"><div class="l">Total em aberto</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} títulos · base ${fmtData(base)}</div></div>
     <div class="kpi k-bad"><div class="l">Vencido</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${(100*venc/tot).toFixed(1)}% da carteira</div></div>
@@ -170,6 +183,7 @@ async function abaReceber(){
   </div>`;
   new Chart(el('chAging'), { type:'bar', data:{ labels:ordF.map(x=>x[0]), datasets:[{ label:'Saldo (R$)', data:ordF.map(x=>x[1]), backgroundColor:'#ffd400' }] },
     options:{ plugins:{ legend:{display:false} }, scales:{ y:{ ticks:{ callback:v=>'R$ '+(v/1e3).toFixed(0)+'k' } } }, x:{ ticks:{ autoSkip:false, font:{size:10} } } } });
+  el('csvRec').onclick = () => baixarCSV('a-receber.csv',[['Cliente','Vencimento','Saldo','Dias atraso'],...rs.map(r=>[r.cliente,r.vencimento,(+r.saldo).toFixed(2),r.dias_atraso])]);
 }
 
 // ---------- Pagar ----------
@@ -188,6 +202,11 @@ async function abaPagar(){
   const fOrd = Object.entries(porForn).sort((a,b)=>b[1].tot-a[1].tot).slice(0,12);
   const tot = rs.reduce((s,r)=>s+(+r.saldo||0),0), venc = rs.filter(r=>r.dias_venc>0).reduce((s,r)=>s+(+r.saldo||0),0);
   el('conteudo').innerHTML = `
+  <div class="section-head">
+    <h2>Contas a Pagar</h2>
+    <span class="meta">compromissos em aberto · base ${fmtData(base)}</span>
+    <button id="csvPag" class="btn-sm" style="margin-left:auto">baixar CSV</button>
+  </div>
   <div class="kpis">
     <div class="kpi k-gold"><div class="l">Total em aberto</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} títulos · base ${fmtData(base)}</div></div>
     <div class="kpi k-bad"><div class="l">Vencido</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${(100*venc/tot).toFixed(1)}% do total</div></div>
@@ -201,4 +220,5 @@ async function abaPagar(){
   </div>`;
   new Chart(el('chCC'), { type:'bar', data:{ labels:ccOrd.map(x=>x[0]), datasets:[{ label:'Saldo (R$)', data:ccOrd.map(x=>x[1]), backgroundColor:'#ffd400' }] },
     options:{ indexAxis:'y', plugins:{ legend:{display:false} }, scales:{ x:{ ticks:{ callback:v=>'R$ '+(v/1e3).toFixed(0)+'k' } } } } });
+  el('csvPag').onclick = () => baixarCSV('a-pagar.csv',[['Fornecedor','Vencimento','Centro custo','Saldo','Dias venc'],...rs.map(r=>[r.fornecedor,r.vencimento,r.centro_custo,(+r.saldo).toFixed(2),r.dias_venc])]);
 }
