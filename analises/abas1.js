@@ -1,6 +1,7 @@
 // ---------- Hoje (agenda da semana e do mês) ----------
-// O que está PROGRAMADO: contas a pagar/receber, produção e compras da semana e do mês,
-// saldo do dia e saldo projetado. Comparativos 2025 ficam nas abas específicas.
+// O que está PROGRAMADO: contas a pagar/receber da semana e do mês, saldo do dia,
+// vencido em aberto. Produção e compras = LANÇAMENTOS do ERP (últimos 7 dias e mês
+// até o último dia da extração — não são "programados" como títulos).
 async function abaHoje(){
   const [serie, rec, pag, prod, comp] = await Promise.all([
     carregar('ovos_serie_diaria'),
@@ -18,6 +19,9 @@ async function abaHoje(){
   const faltam = hoje.getDay()===0 ? 0 : 7 - hoje.getDay(); // semana vai até o domingo
   const fimSemanaISO = ISO(new Date(y, m, d + faltam));
   const fimMesISO = ISO(new Date(y, m+1, 0));
+  // produção/compras: lançamentos do ERP vão até o último dia da extração — usar esse corte
+  const maxDataPC = [...prod, ...comp].reduce((mx,r)=> (r.data && r.data>mx) ? r.data : mx, '');
+  const corteLabel = maxDataPC ? fmtData(maxDataPC) : '—';
 
   const janela = (rows, campo, a, b) => rows.filter(r=>r[campo]>=a && r[campo]<=b);
   const soma = (rows, f='saldo') => rows.reduce((s,r)=>s+(+r[f]||0),0);
@@ -30,14 +34,17 @@ async function abaHoje(){
   const recVenc = rec.filter(r=>r.vencimento<hojeISO);
   const pagVenc = pag.filter(r=>r.vencimento<hojeISO);
 
-  // --- produção e compras: semana e mês ---
-  const cxJ = (rows,a,b) => soma(janela(rows,'data',a,b),'caixas');
-  const prodSem = cxJ(prod,hojeISO,fimSemanaISO), prodMes = cxJ(prod,hojeISO,fimMesISO);
-  const compSem = cxJ(comp,hojeISO,fimSemanaISO), compMes = cxJ(comp,hojeISO,fimMesISO);
-
   // --- saldo do dia (programado: vence hoje) ---
   const recHoje = soma(janela(rec,'vencimento',hojeISO,hojeISO));
   const pagHoje = soma(janela(pag,'vencimento',hojeISO,hojeISO));
+
+  // --- janela de datas para produção/compras ---
+  const cxJ = (rows,a,b) => soma(janela(rows,'data',a,b),'caixas');
+  // semana = últimos 7 dias com dados; mês = do dia 1 até o corte da extração
+  const inicioSemanaISO = ISO(new Date(y, m, d-6));
+  const mesInicioISO = `${y}-${String(m+1).padStart(2,'0')}-01`;
+  const prodSem = cxJ(prod,inicioSemanaISO,maxDataPC), prodMes = cxJ(prod,mesInicioISO,maxDataPC);
+  const compSem = cxJ(comp,inicioSemanaISO,maxDataPC), compMes = cxJ(comp,mesInicioISO,maxDataPC);
 
   // --- agenda por dia (para o gráfico) ---
   const porDia = {};
@@ -49,7 +56,7 @@ async function abaHoje(){
   el('conteudo').innerHTML = `
   <div class="section-head">
     <h2>Hoje</h2>
-    <span class="meta">programação de ${fmtData(hojeISO)} a ${fmtData(fimMesISO)} · posição ${fmtData(u.data_base)}</span>
+    <span class="meta">programação de ${fmtData(hojeISO)} a ${fmtData(fimMesISO)} · posição ${fmtData(u.data_base)} · produção/compras até ${corteLabel}</span>
   </div>
   <div class="kpis">
     <div class="kpi ${recHoje-pagHoje>=0?'k-ok':'k-bad'}"><div class="l">Saldo do dia (hoje)</div>
@@ -63,8 +70,8 @@ async function abaHoje(){
     <div class="kpi k-bad"><div class="l">A pagar no mês</div><div class="v">${BRL(soma(pagMes))}</div><div class="s">${pagMes.length} títulos · até ${fmtData(fimMesISO)}</div></div>
     <div class="kpi ${soma(recMes)-soma(pagMes)>=0?'k-ok':'k-bad'}"><div class="l">Saldo do mês</div>
       <div class="v" style="color:${soma(recMes)-soma(pagMes)>=0?'var(--ok)':'var(--bad)'}">${BRL(soma(recMes)-soma(pagMes))}</div><div class="s">receber − pagar</div></div>
-    <div class="kpi k-slate"><div class="l">Produção semana · mês</div><div class="v">${NUM(prodSem,0)} · ${NUM(prodMes,0)} cx</div><div class="s">programado até ${fmtData(fimSemanaISO)} / ${fmtData(fimMesISO)}</div></div>
-    <div class="kpi k-slate"><div class="l">Compras semana · mês</div><div class="v">${NUM(compSem,0)} · ${NUM(compMes,0)} cx</div><div class="s">programado até ${fmtData(fimSemanaISO)} / ${fmtData(fimMesISO)}</div></div>
+    <div class="kpi k-slate"><div class="l">Produção semana · mês</div><div class="v">${NUM(prodSem,0)} · ${NUM(prodMes,0)} cx</div><div class="s">últimos 7 dias · mês até ${corteLabel}</div></div>
+    <div class="kpi k-slate"><div class="l">Compras semana · mês</div><div class="v">${NUM(compSem,0)} · ${NUM(compMes,0)} cx</div><div class="s">últimos 7 dias · mês até ${corteLabel}</div></div>
     <div class="kpi k-gold"><div class="l">Vencido em aberto</div><div class="v" style="color:var(--bad)">${BRL(soma(recVenc))}</div><div class="s">receber · pagar ${BRL(soma(pagVenc))}</div></div>
   </div>
 
@@ -74,7 +81,7 @@ async function abaHoje(){
       <canvas id="chAgenda" height="110"></canvas>
     </div>
     <div class="cardbox">
-      <div class="cardbox-head"><h3>Produção × Compras — próximos dias (cx)</h3><span class="hint">programado</span></div>
+      <div class="cardbox-head"><h3>Produção × Compras — últimos 14 dias (cx)</h3><span class="hint">lançamentos até ${corteLabel}</span></div>
       <canvas id="chProdComp" height="110"></canvas>
     </div>
   </div>
@@ -107,9 +114,9 @@ async function abaHoje(){
     scales:{ y:{ ticks:{ callback:v=>'R$ '+(v/1e3).toFixed(0)+'k' } } }
   } });
 
-  // produção × compras próximos 14 dias
+  // produção × compras últimos 14 dias (lançamentos reais)
   const dias14 = [];
-  for(let i=0;i<14;i++){ dias14.push(ISO(new Date(y,m,d+i))); }
+  for(let i=13;i>=0;i--){ dias14.push(ISO(new Date(y,m,d-i))); }
   const prodD = dias14.map(dt=>cxJ(prod,dt,dt));
   const compD = dias14.map(dt=>cxJ(comp,dt,dt));
   new Chart(el('chProdComp'), { type:'bar', data:{ labels:dias14.map(dt=>dt.slice(8,10)+'/'+dt.slice(5,7)), datasets:[
