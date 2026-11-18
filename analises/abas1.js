@@ -25,7 +25,6 @@ async function abaHoje(){
     { label:'Receber atrasado', data:serie.map(r=>r.receber_atrasado), borderColor:'#ff5252', tension:.3, pointRadius:2 },
   ]}, options:{ plugins:{ legend:{ labels:{ boxWidth:12 } } }, scales:{ y:{ ticks:{ callback:v=>'R$ '+(v/1e6).toFixed(1)+'M' } } } } });
 }
-const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
 
 // ---------- Receber ----------
 async function abaReceber(){

@@ -26,18 +26,25 @@ async function doLogin(){
 async function aposLogin(){
   const { data:{ user } } = await sb.auth.getUser();
   if(!user){ status(null); return; }
-  const { data: u, error } = await sb.from('usuarios').select('id,nome,perfil,empresa,ativo').eq('id', user.id).maybeSingle();
-  if(error || !u || !u.ativo || u.perfil==='pendente' || !['OVOS','AMBAS','TODAS'].includes(u.empresa)){
-    await sb.auth.signOut(); status(null);
-    el('logErr').textContent = 'Conta sem acesso ao painel OVOS.';
-    return;
+  // 1) usuário do app CASAGRANDE (gerência)?
+  const { data: u } = await sb.from('usuarios').select('id,nome,perfil,empresa,ativo').eq('id', user.id).maybeSingle();
+  if(u && u.ativo && u.perfil!=='pendente' && ['OVOS','AMBAS','TODAS'].includes(u.empresa)){
+    ME = { id:user.id, nome:u.nome, perfil:u.perfil, empresa:u.empresa, ativo:true, tipo:'GERENCIA' };
+  } else {
+    // 2) vendedor com login próprio?
+    const { data: v } = await sb.from('ovos_vendedores').select('id,nome,comissao_pct,tipo,ativo').eq('usuario_id', user.id).maybeSingle();
+    if(!v || !v.ativo){
+      await sb.auth.signOut(); status(null);
+      el('logErr').textContent = 'Conta sem acesso ao painel OVOS.';
+      return;
+    }
+    ME = { id:user.id, nome:v.nome, perfil:'vendedor', empresa:'OVOS', ativo:true, vend_id:v.id, tipo:'VENDEDOR' };
   }
-  ME = u;
   el('loginScreen').style.display='none';
   el('app').style.display='block';
-  el('userChip').innerHTML = `<b>${u.nome}</b> · ${u.perfil} <button onclick="logout()">sair</button>`;
+  el('userChip').innerHTML = `<b>${ME.nome}</b> · ${ME.perfil} <button onclick="logout()">sair</button>`;
   montarAbas();
-  await irAba('hoje');
+  await irAba(ME.tipo==='VENDEDOR' ? 'meuvend' : 'hoje');
 }
 
 async function logout(){ await sb.auth.signOut(); location.reload(); }
@@ -58,20 +65,29 @@ async function carregar(tabla, cols='*'){
   CACHE[key] = data;
   return data;
 }
+function limparCache(){ CACHE = {}; }
 const ultimaBase = rows => rows.reduce((m,r)=> r.data_base>m?r.data_base:m, '');
+const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
+const MESN = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const fmtMes = ym => { const [a,b]=ym.split('-'); return `${MESN[+b-1]}/${a.slice(2)}`; };
 
 // ---------- abas ----------
-const ABAS = [
-  ['hoje','Hoje'],['receber','Receber'],['pagar','Pagar'],
-  ['producao','Produção'],['compras','Compras'],['clientes','Clientes'],['janela','Janela ERP']
-];
+function abasDoUsuario(){
+  if(ME.tipo==='VENDEDOR') return [['meuvend','Meu painel']];
+  return [
+    ['hoje','Hoje'],['receber','Receber'],['pagar','Pagar'],
+    ['producao','Produção'],['compras','Compras'],['clientes','Clientes'],
+    ['janela','Janela ERP'],['vendedores','Vendedores']
+  ];
+}
 let ABA = null;
 function montarAbas(){
-  el('tabs').innerHTML = ABAS.map(([id,l])=>`<button id="tab-${id}" onclick="irAba('${id}')">${l}</button>`).join('');
+  const abas = abasDoUsuario();
+  el('tabs').innerHTML = abas.map(([id,l])=>`<button id="tab-${id}" onclick="irAba('${id}')">${l}</button>`).join('');
 }
 async function irAba(id){
   ABA = id;
-  ABAS.forEach(([k])=> el('tab-'+k).classList.toggle('on', k===id));
+  abasDoUsuario().forEach(([k])=>{ const b=el('tab-'+k); if(b) b.classList.toggle('on', k===id); });
   el('conteudo').innerHTML = '<div class="cardbox">Carregando…</div>';
   try{
     if(id==='hoje') await abaHoje();
@@ -81,6 +97,8 @@ async function irAba(id){
     else if(id==='compras') await abaCompras();
     else if(id==='clientes') await abaClientes();
     else if(id==='janela') await abaJanela();
+    else if(id==='vendedores') await abaVendedoresAdmin();
+    else if(id==='meuvend') await abaPainelVendedor(null);
   }catch(e){
     el('conteudo').innerHTML = `<div class="cardbox">Erro ao carregar: ${e.message||e}</div>`;
   }
