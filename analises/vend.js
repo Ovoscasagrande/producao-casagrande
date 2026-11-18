@@ -3,7 +3,7 @@ async function abaVendedoresAdmin(){
   const vend = await carregar('ovos_vendedores');
   const vendas = await carregar('ovos_vendas','vendedor_id,valor_venda,valor_recebido,data_venda');
   const comis = await carregar('ovos_comissoes','vendedor_id,competencia,valor_comissao,status');
-  const hist = await carregar('ovos_recebidos_historico','vendedor,data_pagamento,valor_pago');
+  const hist = await carregar('ovos_recebidos_historico','vendedor,data_pagamento,valor_pago','data_pagamento=gte.'+new Date().getFullYear()+'-01-01');
   const agora = new Date();
   const y = agora.getFullYear();
   const mesAtu = `${y}-${String(agora.getMonth()+1).padStart(2,'0')}`;
@@ -39,17 +39,17 @@ async function abaVendedoresAdmin(){
   </div>
   <div class="cardbox">
     <h3>Vendedores cadastrados — recebido em ${y} (base: recebimentos do ERP)</h3>
-    <div class="table-wrap"><table>
+    <div class="table-wrap"><table class="tabela-cartao">
       <thead><tr><th>Nome</th><th>Tipo</th><th class="num">Comissão</th><th class="num">Recebido ${y}</th><th class="num">Recebido ${fmtMes(mesAtu)}</th><th class="num">Comissão ${y} (est. ${fmtMes(mesAtu)})</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody>
       ${vend.map(v=>{
         const r=resumo[v.nome]||{hist:0,histMes:0};
         const com = r.hist*(v.comissao_pct/100), comMes = r.histMes*(v.comissao_pct/100);
-        return `<tr><td><b>${v.nome}</b></td><td>${v.tipo==='LOGIN'?'Com login':'Genérico'}</td>
+        return `<tr><td data-l="Nome"><b>${v.nome}</b></td><td data-l="Tipo">${v.tipo==='LOGIN'?'Com login':'Genérico'}</td>
         <td class="num"><input id="pct-${v.id}" class="inp" type="number" step="0.01" min="0" max="100" value="${v.comissao_pct}" style="width:74px;padding:5px 7px;text-align:right"> %</td>
-        <td class="num">${BRL(r.hist)}</td><td class="num">${BRL(r.histMes)}</td>
+        <td class="num" data-l="Recebido ${y}">${BRL(r.hist)}</td><td class="num" data-l="Recebido ${fmtMes(mesAtu)}">${BRL(r.histMes)}</td>
         <td class="num"><b>${BRL(com)}</b> <span style="color:var(--mut)">(${BRL(comMes)})</span></td>
-        <td><span class="badge ${v.ativo?'g':'r'}">${v.ativo?'ATIVO':'BLOQUEADO'}</span></td>
+        <td data-l="Status"><span class="badge ${v.ativo?'g':'r'}">${v.ativo?'ATIVO':'BLOQUEADO'}</span></td>
         <td style="white-space:nowrap;display:flex;gap:4px">
           <button onclick="salvaPct(${v.id})" class="btn-sm acc">salvar %</button>
           <button onclick="abaPainelVendedor(${v.id})" class="btn-sm">painel</button>
@@ -58,7 +58,9 @@ async function abaVendedoresAdmin(){
       }).join('')}
       </tbody>
     </table></div>
-    <div style="font-size:11.5px;color:var(--mut);margin-top:10px">Comissão em estimativa sobre recebimentos do ERP enquanto a planilha de vendas não é carregada. Quando carregar, passa a valer a comissão exata por venda.</div>
+    <div class="callout-info" style="margin-top:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e40af">
+      <b>Por que a coluna Vendas aparece vazia:</b> a planilha de VENDAS do ERP ainda não foi carregada (pendência combinada). A comissão mostrada é <b>estimada</b> sobre os recebimentos reais do ERP. Quando a planilha chegar, as vendas e a comissão exata por venda entram automaticamente.
+    </div>
   </div>`;
   const sel = el('vdTipo');
   if(sel) sel.onchange = ()=> el('vdLoginBox').style.display = sel.value==='LOGIN' ? 'block' : 'none';
