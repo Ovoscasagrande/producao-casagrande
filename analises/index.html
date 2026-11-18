@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel OVOS — Análises</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0a0a0a;--card:#141414;--line:#2a2a2a;--txt:#e6e6e6;--mut:#9a9a9a;--acc:#ffd400;--bad:#ff5252;--ok:#4caf50}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font:14px/-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
+#loginScreen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:600}
+.loginbox{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px;width:min(92vw,380px);text-align:center}
+.loginbox svg{height:64px;margin-bottom:14px}
+.loginbox h3{color:#fff;margin:0 0 4px;font-size:18px}
+.loginbox .sub{color:var(--mut);font-size:12px;margin-bottom:18px}
+.loginbox input{width:100%;background:#000;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:11px 14px;font-size:14px;outline:none;margin-bottom:10px}
+.loginbox input:focus{border-color:var(--acc)}
+.loginbox .err{color:var(--bad);font-size:12px;margin-top:8px;min-height:16px}
+.loginbox button{width:100%;padding:11px;border-radius:10px;border:none;background:var(--acc);color:#000;font-weight:700;font-size:14px;cursor:pointer;margin-top:4px}
+#app{display:none}
+header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:100}
+header svg{height:34px}
+header h1{font-size:16px;color:#fff}
+#userChip{margin-left:auto;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--mut)}
+#userChip b{color:var(--acc)}
+#userChip button{background:none;border:none;color:var(--mut);cursor:pointer;text-decoration:underline;font-size:11px}
+nav{display:flex;gap:4px;padding:10px 18px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{background:none;border:1px solid transparent;color:var(--mut);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap}
+nav button.on{color:#000;background:var(--acc);font-weight:700}
+main{padding:18px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi .l{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.kpi .v{font-size:20px;font-weight:700;color:#fff;margin-top:4px}
+.kpi .s{font-size:11px;color:var(--mut);margin-top:2px}
+.cardbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.cardbox h3{font-size:13px;color:#fff;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{color:var(--mut);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);font-weight:600}
+td{padding:6px 8px;border-bottom:1px solid #1e1e1e}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.badge.r{background:#3a1515;color:#ff8080}.badge.y{background:#3a3015;color:#ffd479}.badge.g{background:#153a1b;color:#7fd88f}
+#status{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 16px;font-size:12px;color:var(--mut);display:none;z-index:500}
+canvas{max-width:100%}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="loginScreen">
+  <div class="loginbox">
+    <svg viewBox="0 0 210 64" xmlns="http://www.w3.org/2000/svg" style="height:64px" aria-label="Ovos Casagrande">
+  <path d="M32 6 C 44 6 52 25 52 40 A 20 21 0 1 1 12 40 C 12 25 20 6 32 6 Z" fill="#ffd400"/>
+  <ellipse cx="26" cy="30" rx="5" ry="8" fill="#ffffff" opacity=".35"/>
+  <text x="62" y="30" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">OVOS</text>
+  <text x="62" y="52" fill="#9a9a9a" font-family="Arial, sans-serif" font-size="15" letter-spacing="2">CASAGRANDE</text>
+</svg>
+    <h3>Painel OVOS — Análises</h3>
+    <div class="sub">Acesso com a conta CASAGRANDE (e-mail e senha)</div>
+    <input id="logEmail" type="email" placeholder="E-mail" autocomplete="username">
+    <input id="logPass" type="password" placeholder="Senha" autocomplete="current-password">
+    <button onclick="doLogin()">Entrar</button>
+    <div class="err" id="logErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <svg viewBox="0  logo placeholder</svg>
+    <h1>Painel OVOS — Análises</h1>
+    <div id="userChip"></div>
+  </header>
+  <nav id="tabs"></nav>
+  <main id="conteudo"></main>
+</div>
+<div id="status"></div>
+
+<script>
+const SUPABASE_URL = 'https://ppiqkrvlvtsnsthnfibg.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_O9oB4kDpibrJPSoWDlgX-A_yAsQ2znY';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const BRL = n => n==null ? '—' : n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const NUM = (n,d=0) => n==null ? '—' : n.toLocaleString('pt-BR',{maximumFractionDigits:d,minimumFractionDigits:d});
+const el = id => document.getElementById(id);
+let ME = null, CACHE = {};
+
+Chart.defaults.color = '#9a9a9a';
+Chart.defaults.borderColor = 'rgba(42,42,42,.9)';
+Chart.defaults.font.family = "-apple-system,'Segoe UI',Roboto,Arial,sans-serif";
+
+function status(msg){ const s=el('status'); if(!msg){s.style.display='none';return;} s.textContent=msg; s.style.display='block'; }
+
+async function doLogin(){
+  const email = el('logEmail').value.trim().toLowerCase();
+  const pass = el('logPass').value;
+  el('logErr').textContent = '';
+  if(!email || !pass){ el('logErr').textContent='Informe e-mail e senha.'; return; }
+  status('Entrando…');
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  after: placeholder
