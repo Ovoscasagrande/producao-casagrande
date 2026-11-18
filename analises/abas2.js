@@ -7,28 +7,40 @@ async function abaProducao(){
   const ap26 = {};
   rows.filter(r=>r.ano===2026).forEach(r=>{ ap26[r.apresentacao||'—']=(ap26[r.apresentacao||'—']||0)+(+r.caixas||0); });
   const apOrd = Object.entries(ap26).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const tot25 = rows.filter(r=>r.ano===2025).reduce((s,r)=>s+(+r.caixas||0),0);
+  // comparativo no MESMO período: 2025 cortado no mesmo dia/mês do último lançamento de 2026
+  const max26 = rows.filter(r=>r.ano===2026).reduce((mx,r)=> (r.data && r.data>mx) ? r.data : mx, '');
+  const corte25 = max26 ? String(new Date().getFullYear()-1) + max26.slice(4) : '';
+  const tot25 = rows.filter(r=>r.ano===2025 && (!corte25 || r.data<=corte25)).reduce((s,r)=>s+(+r.caixas||0),0);
   const tot26 = rows.filter(r=>r.ano===2026).reduce((s,r)=>s+(+r.caixas||0),0);
+  const corteLabel = max26 ? ' até '+fmtData(max26) : '';
   el('conteudo').innerHTML = `
   <div class="section-head">
     <h2>Produção (Embalagem &amp; Classificação)</h2>
     <span class="meta">Comparativo anual em caixas</span>
   </div>
   <div class="kpis">
-    <div class="kpi k-slate"><div class="l">Produção 2025</div><div class="v">${NUM(tot25,1)} cx</div><div class="s">ano anterior</div></div>
-    <div class="kpi k-gold"><div class="l">Produção 2026</div><div class="v" style="color:#d97706">${NUM(tot26,1)} cx</div><div class="s">acumulado atual</div></div>
-    <div class="kpi k-ok"><div class="l">Variação</div><div class="v" style="color:${tot26>=tot25?'var(--ok)':'var(--bad)'}">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">2026 vs 2025</div></div>
+    <div class="kpi k-slate"><div class="l">Produção 2025</div><div class="v">${NUM(tot25,1)} cx</div><div class="s">mesmo período${corteLabel}</div></div>
+    <div class="kpi k-gold"><div class="l">Produção 2026</div><div class="v" style="color:#d97706">${NUM(tot26,1)} cx</div><div class="s">até ${fmtData(max26)||'—'}</div></div>
+    <div class="kpi k-ok"><div class="l">Variação</div><div class="v" style="color:${tot26>=tot25?'var(--ok)':'var(--bad)'}">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">mesmo período${corteLabel}</div></div>
   </div>
   <div class="two">
     <div class="cardbox"><h3>Caixas produzidas por mês</h3><canvas id="chProdMes"></canvas></div>
-    <div class="cardbox"><h3>Top 10 apresentações 2026</h3><canvas id="chProdAp"></canvas></div>
+    <div class="cardbox"><h3>Top 10 apresentações 2026</h3>
+      ${apOrd.length ? apOrd.map(([nome,val])=>{
+        const max = apOrd[0][1] || 1;
+        return `<div style="margin-bottom:7px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span>${nome}</span><b>${NUM(val,0)}</b></div>
+          <div style="height:8px;background:#f1f5f9;border-radius:4px"><div style="height:8px;width:${(100*val/max).toFixed(1)}%;background:#f59e0b;border-radius:4px"></div></div>
+        </div>`;
+      }).join('') : '<div style="color:var(--mut);padding:8px 0">Sem dados de 2026 — verificar carga.</div>'}
+      <button class="btn-sm" style="margin-top:8px" onclick="baixarCSV('producao-2026.csv',[['Apresentação','Caixas'],...apOrd.map(x=>[x[0],x[1].toFixed(3)])])">baixar CSV</button>
+    </div>
   </div>`;
-  new Chart(el('chProdMes'), { type:'bar', data:{ labels:meses, datasets:[
+  if(!meses.length) el('chProdMes').closest('.cardbox').innerHTML = '<h3>Caixas produzidas por mês</h3><div style="color:var(--mut);padding:8px 0">Sem dados — verificar carga.</div>';
+  else new Chart(el('chProdMes'), { type:'bar', data:{ labels:meses, datasets:[
     { label:'2025', data:meses.map(m=>porAnoMes[m][2025]), backgroundColor:'#94a3b8', borderRadius:5 },
     { label:'2026', data:meses.map(m=>porAnoMes[m][2026]), backgroundColor:'#f59e0b', borderRadius:5 },
   ]}, options:{ plugins:{ legend:{ labels:{ usePointStyle:true, boxWidth:10 } } } } });
-  new Chart(el('chProdAp'), { type:'bar', data:{ labels:apOrd.map(x=>x[0]), datasets:[{ label:'Caixas', data:apOrd.map(x=>x[1]), backgroundColor:'#0f172a', borderRadius:5 }] },
-    options:{ indexAxis:'y', plugins:{ legend:{display:false} } } });
 }
 
 // ---------- Compras ----------
@@ -40,28 +52,39 @@ async function abaCompras(){
   const gr = {};
   rows.forEach(r=>{ const g=r.granja||'—'; gr[g]=gr[g]||{2025:0,2026:0}; gr[g][r.ano]+=+r.caixas||0; });
   const gOrd = Object.entries(gr).sort((a,b)=>b[1][2026]-a[1][2026]).slice(0,10);
-  const tot25 = rows.filter(r=>r.ano===2025).reduce((s,r)=>s+(+r.caixas||0),0);
+  const max26 = rows.filter(r=>r.ano===2026).reduce((mx,r)=> (r.data && r.data>mx) ? r.data : mx, '');
+  const corte25 = max26 ? String(new Date().getFullYear()-1) + max26.slice(4) : '';
+  const tot25 = rows.filter(r=>r.ano===2025 && (!corte25 || r.data<=corte25)).reduce((s,r)=>s+(+r.caixas||0),0);
   const tot26 = rows.filter(r=>r.ano===2026).reduce((s,r)=>s+(+r.caixas||0),0);
+  const corteLabel = max26 ? ' até '+fmtData(max26) : '';
   el('conteudo').innerHTML = `
   <div class="section-head">
     <h2>Compras de Ovos (Granjas)</h2>
     <span class="meta">Entrada de matéria-prima em caixas</span>
   </div>
   <div class="kpis">
-    <div class="kpi k-slate"><div class="l">Compras 2025</div><div class="v">${NUM(tot25,1)} cx</div><div class="s">ano anterior</div></div>
-    <div class="kpi k-gold"><div class="l">Compras 2026</div><div class="v" style="color:#d97706">${NUM(tot26,1)} cx</div><div class="s">acumulado atual</div></div>
-    <div class="kpi k-ok"><div class="l">Variação</div><div class="v" style="color:${tot26>=tot25?'var(--ok)':'var(--bad)'}">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">2026 vs 2025</div></div>
+    <div class="kpi k-slate"><div class="l">Compras 2025</div><div class="v">${NUM(tot25,1)} cx</div><div class="s">mesmo período${corteLabel}</div></div>
+    <div class="kpi k-gold"><div class="l">Compras 2026</div><div class="v" style="color:#d97706">${NUM(tot26,1)} cx</div><div class="s">até ${fmtData(max26)||'—'}</div></div>
+    <div class="kpi k-ok"><div class="l">Variação</div><div class="v" style="color:${tot26>=tot25?'var(--ok)':'var(--bad)'}">${tot25?((tot26/tot25-1)*100).toFixed(1)+'%':'—'}</div><div class="s">mesmo período${corteLabel}</div></div>
   </div>
   <div class="two">
     <div class="cardbox"><h3>Caixas compradas por mês</h3><canvas id="chCompMes"></canvas></div>
-    <div class="cardbox"><h3>Top 10 granjas 2026</h3><canvas id="chCompGr"></canvas></div>
+    <div class="cardbox"><h3>Participação por granja 2026</h3>
+      ${gOrd.length ? gOrd.map(([nome,g])=>{
+        const tot26g = gOrd.reduce((s,x)=>s+x[1][2026],0) || 1;
+        const pctg = (100*g[2026]/tot26g).toFixed(1);
+        return `<div style="margin-bottom:7px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span>${nome}</span><b>${NUM(g[2026],0)} cx · ${pctg}%</b></div>
+          <div style="height:8px;background:#f1f5f9;border-radius:4px"><div style="height:8px;width:${pctg}%;background:#0ea5e9;border-radius:4px"></div></div>
+        </div>`;
+      }).join('') : '<div style="color:var(--mut);padding:8px 0">Sem dados de 2026 — verificar carga.</div>'}
+    </div>
   </div>`;
-  new Chart(el('chCompMes'), { type:'bar', data:{ labels:meses, datasets:[
+  if(!meses.length) el('chCompMes').closest('.cardbox').innerHTML = '<h3>Caixas compradas por mês</h3><div style="color:var(--mut);padding:8px 0">Sem dados — verificar carga.</div>';
+  else new Chart(el('chCompMes'), { type:'bar', data:{ labels:meses, datasets:[
     { label:'2025', data:meses.map(m=>porAnoMes[m][2025]), backgroundColor:'#94a3b8', borderRadius:5 },
     { label:'2026', data:meses.map(m=>porAnoMes[m][2026]), backgroundColor:'#f59e0b', borderRadius:5 },
   ]}, options:{ plugins:{ legend:{ labels:{ usePointStyle:true, boxWidth:10 } } } } });
-  new Chart(el('chCompGr'), { type:'bar', data:{ labels:gOrd.map(x=>x[0]), datasets:[{ label:'Caixas', data:gOrd.map(x=>x[1][2026]), backgroundColor:'#0f172a', borderRadius:5 }] },
-    options:{ indexAxis:'y', plugins:{ legend:{display:false} } } });
 }
 
 // ---------- Clientes ----------
