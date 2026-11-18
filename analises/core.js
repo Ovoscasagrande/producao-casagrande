@@ -64,19 +64,42 @@ async function carregar(tabla, cols='*', filtro=null){
   const key = tabla+':'+cols+':'+(filtro||'');
   if(CACHE[key]) return CACHE[key];
   status('Carregando '+tabla+'…');
-  let q = sb.from(tabla).select(cols);
-  if(filtro) q = q.or(filtro);
-  const { data, error } = await q;
+  // PostgREST devolve no máx 1000 linhas por chamada — paginar com range()
+  const PAG = 1000;
+  let all = [], from = 0;
+  while(true){
+    let q = sb.from(tabla).select(cols);
+    if(filtro) q = q.or(filtro);
+    const { data, error } = await q.range(from, from + PAG - 1);
+    if(error){ console.error(tabla, error); status(null); throw error; }
+    all = all.concat(data || []);
+    if(!data || data.length < PAG) break;
+    from += PAG;
+    if(from > 200000) break; // trava de segurança
+  }
   status(null);
-  if(error){ console.error(tabla, error); throw error; }
-  CACHE[key] = data;
-  return data;
+  CACHE[key] = all;
+  return all;
 }
 function limparCache(){ CACHE = {}; }
 const ultimaBase = rows => rows.reduce((m,r)=> r.data_base>m?r.data_base:m, '');
 const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
 const MESN = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 const fmtMes = ym => { const [a,b]=ym.split('-'); return `${MESN[+b-1]}/${a.slice(2)}`; };
+
+// ---------- exportação CSV ----------
+function baixarCSV(nome, linhas){
+  const csv = linhas.map(r => r.map(x => {
+    const s = String(x ?? '');
+    return /[;",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(';')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nome;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 // ---------- abas ----------
 function abasDoUsuario(){
