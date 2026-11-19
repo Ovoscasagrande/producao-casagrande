@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Painel OVOS — Análises | Ovos Casagrande</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="alternate icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="theme-color" content="#0f172a">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -151,6 +149,11 @@ main{max-width:1440px;margin:0 auto;padding:20px}
 .kpi .l{color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
 .kpi .v{font-size:21px;font-weight:800;color:var(--txt);margin-top:6px;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
 .kpi .s{font-size:11px;color:var(--mut);margin-top:4px;line-height:1.35}
+.kpi.k-click{cursor:pointer;width:100%;text-align:left;font:inherit;border:1px solid var(--line);border-left:3px solid var(--line);border-radius:14px;background:var(--card);transition:box-shadow .15s,transform .15s}
+.kpi.k-click:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.kpi.k-click.k-ok{border-left-color:var(--ok)}
+.kpi.k-click.k-bad{border-left-color:var(--bad)}
+.kpi.k-click.k-gold{border-left-color:var(--acc-bright)}
 
 /* ---------- Cards ---------- */
 .cardbox{
@@ -223,8 +226,71 @@ canvas{max-width:100%}
   .tabela-cartao td.num:before{margin-right:auto}
 }
 
+/* ---------- Gaveta de origem (drill-down) ---------- */
+#drawerOverlay{
+  position:fixed;inset:0;background:rgba(15,23,42,.45);
+  opacity:0;pointer-events:none;transition:opacity .25s;z-index:540;
+}
+#drawerOverlay.on{opacity:1;pointer-events:auto}
+#drawerAnalise{
+  position:fixed;z-index:550;background:var(--card);
+  top:0;right:0;height:100dvh;width:min(560px,92vw);
+  border-left:1px solid var(--line);
+  box-shadow:-12px 0 32px rgba(15,23,42,.14);
+  display:flex;flex-direction:column;
+  transform:translateX(105%);visibility:hidden;
+  transition:transform .32s cubic-bezier(.32,.72,.28,1),visibility .32s;
+}
+#drawerAnalise.on{transform:translateX(0);visibility:visible}
+.dw-head{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.dw-titles{min-width:0}
+.dw-head h3{font-size:15px;font-weight:800;letter-spacing:-.2px;color:var(--txt)}
+.dw-head p{font-size:11.5px;color:var(--mut);margin-top:2px;line-height:1.4}
+.dw-actions{margin-left:auto;display:flex;gap:6px;flex:none}
+.dw-resumo{padding:8px 18px;border-bottom:1px solid var(--line);display:none}
+.dw-resumo.on{display:block}
+.dw-resumo .dw-ri{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0}
+.dw-resumo .dw-ri span{color:var(--mut)}
+.dw-resumo .dw-ri b{font-variant-numeric:tabular-nums;color:var(--txt);text-align:right}
+.dw-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 18px 18px}
+.dw-foot{padding:10px 18px;border-top:1px solid var(--line);font-size:11px;color:var(--mut);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.dw-foot b{font-variant-numeric:tabular-nums;color:var(--txt)}
+
+/* ---------- Gaveta: alternador de visões ---------- */
+.dw-tabs{display:none;gap:6px;padding:10px 18px 0;border-bottom:1px solid var(--line)}
+.dw-tabs button{
+  background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--mut);font-size:12px;font-weight:700;padding:6px 2px;cursor:pointer;
+}
+.dw-tabs button.on{color:#b45309;border-bottom-color:var(--acc)}
+
+/* ---------- Chip de filtro ativo ---------- */
+.chip-filtro{display:none;align-items:center;gap:8px;margin-bottom:12px}
+.chip-filtro.on{display:flex}
+.chip-filtro .pill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--acc-soft);border:1px solid #fde68a;color:#92400e;
+  font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:20px;
+}
+.chip-filtro .pill b{font-weight:800}
+.chip-filtro .pill button{
+  background:none;border:none;color:#92400e;cursor:pointer;
+  font-weight:800;font-size:12px;padding:0 2px;line-height:1;
+}
+.chip-filtro .pill button:hover{color:var(--bad)}
+
 /* ---------- Mobile ---------- */
 @media(max-width:640px){
+  #drawerAnalise{
+    top:auto;bottom:0;left:0;right:0;width:100%;height:auto;max-height:85dvh;
+    border-left:none;border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+    transform:translateY(105%);
+    box-shadow:0 -12px 32px rgba(15,23,42,.18);
+  }
+  #drawerAnalise.on{transform:translateY(0)}
+  .dw-head{padding:14px 14px 10px}
+  .dw-body{padding:4px 14px 16px}
+  .dw-resumo{padding:8px 14px}
   header{padding:10px 14px;gap:10px}
   header .logo-chip img{height:24px}
   header h1{font-size:14px}
