@@ -101,6 +101,128 @@ function baixarCSV(nome, linhas){
   URL.revokeObjectURL(a.href);
 }
 
+// ---------- gaveta de origem (drill-down) ----------
+let DW_CFG = null;
+function fecharOrigem(){
+  el('drawerAnalise').classList.remove('on');
+  el('drawerOverlay').classList.remove('on');
+  DW_CFG = null;
+}
+function abrirOrigem(cfg){
+  // cfg: { titulo, subtitulo, resumoTop, colunas, linhas, nomeCsv }
+  DW_CFG = cfg;
+  el('dwTitulo').textContent = cfg.titulo || 'Origem';
+  el('dwSub').textContent = cfg.subtitulo || '';
+  const colunas = cfg.colunas || [], linhas = cfg.linhas || [];
+  // colunas numéricas = todas as linhas têm valor number não-nulo
+  const numCols = colunas.map((c,i)=> linhas.length && linhas.every(r => typeof r[i]==='number') ? i : -1).filter(i=>i>=0);
+  // mini-resumo: top 3 maiores pela 1ª coluna numérica
+  const res = el('dwResumo');
+  if(cfg.resumoTop && numCols.length){
+    const ni = numCols[0];
+    const top = [...linhas].sort((a,b)=> Math.abs(b[ni])-Math.abs(a[ni])).slice(0,3);
+    const fmt = v => colunas[ni].toLowerCase().includes('r$')||colunas[ni].toLowerCase().includes('valor') ? BRL(v) : NUM(v,1);
+    res.innerHTML = top.map(r=>`<div class="dw-ri"><span>${String(r[0])}</span><b>${fmt(r[ni])}</b></div>`).join('');
+    res.classList.add('on');
+  } else { res.innerHTML=''; res.classList.remove('on'); }
+  // tabela
+  const tab = el('dwTab');
+  tab.innerHTML = '<thead><tr>'+colunas.map((c,i)=>`<th${numCols.includes(i)?' class="num"':''}>${c}</th>`).join('')+'</tr></thead>'
+    + '<tbody>'+linhas.map(r=>'<tr>'+r.map((v,i)=>`<td${numCols.includes(i)?' class="num"':''} data-l="${colunas[i]}">${fmtCelula(v,colunas[i])}</td>`).join('')+'</tr>').join('')+'</tbody>';
+  // rodapé com totalização automática das colunas numéricas
+  const tot = numCols.map(i=>{
+    const soma = linhas.reduce((s,r)=>s+(r[i]||0),0);
+    const fmt = colunas[i].toLowerCase().includes('r$')||colunas[i].toLowerCase().includes('valor') ? BRL : NUM;
+    return `<span>${colunas[i]}: <b>${fmt(soma)}</b></span>`;
+  }).join('');
+  el('dwFoot').innerHTML = `<span>${NUM(linhas.length)} registro${linhas.length===1?'':'s'}</span>${tot}`;
+  // CSV
+  el('dwCsv').onclick = ()=> baixarCSV(cfg.nomeCsv || 'recorte.csv', [colunas, ...linhas]);
+  el('drawerOverlay').classList.add('on');
+  el('drawerAnalise').classList.add('on');
+}
+function fmtCelula(v, col){
+  if(v==null) return '—';
+  if(typeof v==='number'){
+    const c=(col||'').toLowerCase();
+    if(c.includes('r$')||c.includes('valor')||c.includes('saldo')) return BRL(v);
+    if(c.includes('%')) return NUM(v,1)+'%';
+    if(c.includes('data')||c.includes('venc')) return fmtData(String(v));
+    return NUM(v, c.includes('cx')||c.includes('caixa')?1:0);
+  }
+  return String(v);
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && el('drawerAnalise').classList.contains('on')) fecharOrigem(); });
+
+// ---------- chip de filtro ativo ----------
+function renderChipFiltro(containerId, labelFiltro, onLimpar){
+  const c = el(containerId);
+  if(!c) return;
+  if(!labelFiltro){ c.classList.remove('on'); c.innerHTML=''; return; }
+  c.classList.add('on');
+  c.innerHTML = `<span class="pill">Filtrando por: <b>${labelFiltro}</b> <button aria-label="Limpar filtro" title="Limpar filtro">✕</button></span>`;
+  c.querySelector('button').onclick = ()=>{ c.classList.remove('on'); c.innerHTML=''; if(onLimpar) onLimpar(); };
+}
+
+// ---------- gráficos interativos ----------
+const GRAFICOS = {}; // canvasId -> instância Chart (destruída antes de recriar)
+function criarGraficoInterativo(canvasId, config){
+  const cv = el(canvasId);
+  if(!cv) return null;
+  if(GRAFICOS[canvasId]){ GRAFICOS[canvasId].destroy(); delete GRAFICOS[canvasId]; }
+  const orfa = Chart.getChart(cv); // instância criada fora do wrapper (new Chart direto)
+  if(orfa) orfa.destroy();
+  // clone raso-preservando funções: JSON.stringify descartaria onClickItem
+  const onClickItemUser = config.options && config.options.onClickItem;
+  const cfg = JSON.parse(JSON.stringify(config));
+  if(onClickItemUser) cfg.options.onClickItem = onClickItemUser;
+  // visual padrão da marca
+  cfg.options = cfg.options || {};
+  cfg.options.animation = Object.assign({ duration:450, easing:'easeOutQuart' }, cfg.options.animation||{});
+  cfg.options.responsive = true;
+  cfg.options.maintainAspectRatio = false;
+  // gradientes verticais suaves nas barras (cores da marca)
+  const marca = [getComputedStyle(document.documentElement).getPropertyValue('--acc-bright').trim()||'#ffd400',
+                 getComputedStyle(document.documentElement).getPropertyValue('--acc').trim()||'#f59e0b'];
+  const grad = (ctx, area)=>{ const g=ctx.createLinearGradient(0,area.bottom,0,area.top); g.addColorStop(0,marca[0]+'55'); g.addColorStop(1,marca[1]); return g; };
+  (cfg.data.datasets||[]).forEach(ds=>{
+    if((ds.type||cfg.type)==='bar' && !ds.backgroundColor){
+      ds.borderRadius = 6;
+      ds.backgroundColor = c=>{ const {ctx,chartArea}=c.chart; return chartArea ? grad(ctx,chartArea) : marca[1]; };
+    }
+  });
+  // cursor pointer quando houver elemento sob o mouse
+  const onClickItem = cfg.options.onClickItem;
+  cfg.options.onHover = (e, els)=>{
+    e.native.target.style.cursor = els.length && onClickItem ? 'pointer' : 'default';
+  };
+  if(onClickItem){
+    cfg.options.onClick = (e, els)=>{
+      if(!els.length) return;
+      const i = els[0].index, d = els[0].datasetIndex;
+      const label = cfg.data.labels ? cfg.data.labels[i] : i;
+      onClickItem(i, label, d);
+    };
+  }
+  const inst = new Chart(cv, cfg);
+  // Chart.js v4 normaliza options.onClick (função -> objeto interno); expõe de volta p/ testes e uso externo
+  if(onClickItem) inst.options.onClick = cfg.options.onClick;
+  GRAFICOS[canvasId] = inst;
+  return inst;
+}
+// subtítulo discreto "Toque/clique para ver a origem" no rodapé do card do gráfico
+function hintGrafico(canvasId, texto){
+  const cv = el(canvasId);
+  if(!cv) return;
+  const card = cv.closest('.cardbox');
+  if(!card) return;
+  const head = card.querySelector('.cardbox-head');
+  const hint = document.createElement('span');
+  hint.className = 'hint';
+  hint.textContent = texto || '👆 toque/clique para ver a origem';
+  (head || card).appendChild(hint);
+}
+
 // ---------- abas ----------
 function abasDoUsuario(){
   if(ME.tipo==='VENDEDOR') return [['meuvend','Meu painel']];
