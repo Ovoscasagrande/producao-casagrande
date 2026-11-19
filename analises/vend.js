@@ -3,7 +3,7 @@ async function abaVendedoresAdmin(){
   const vend = await carregar('ovos_vendedores');
   const vendas = await carregar('ovos_vendas','vendedor_id,valor_venda,valor_recebido,data_venda');
   const comis = await carregar('ovos_comissoes','vendedor_id,competencia,valor_comissao,status');
-  const hist = await carregar('ovos_recebidos_historico','vendedor,data_pagamento,valor_pago','data_pagamento.gte.'+new Date().getFullYear()+'-01-01');
+  const hist = await carregar('ovos_recebidos_historico','vendedor,data_pagamento,valor_pago,cliente','data_pagamento.gte.'+new Date().getFullYear()+'-01-01');
   const agora = new Date();
   const y = agora.getFullYear();
   const mesAtu = `${y}-${String(agora.getMonth()+1).padStart(2,'0')}`;
@@ -45,7 +45,8 @@ async function abaVendedoresAdmin(){
       ${vend.map(v=>{
         const r=resumo[v.nome]||{hist:0,histMes:0};
         const com = r.hist*(v.comissao_pct/100), comMes = r.histMes*(v.comissao_pct/100);
-        return `<tr><td data-l="Nome"><b>${v.nome}</b></td><td data-l="Tipo">${v.tipo==='LOGIN'?'Com login':'Genérico'}</td>
+        const vi = vend.indexOf(v);
+        return `<tr data-vend="${vi}" style="cursor:pointer" title="Clique para ver os recebimentos do vendedor"><td data-l="Nome"><b>${v.nome}</b></td><td data-l="Tipo">${v.tipo==='LOGIN'?'Com login':'Genérico'}</td>
         <td class="num"><input id="pct-${v.id}" class="inp" type="number" step="0.01" min="0" max="100" value="${v.comissao_pct}" style="width:74px;padding:5px 7px;text-align:right"> %</td>
         <td class="num" data-l="Recebido ${y}">${BRL(r.hist)}</td><td class="num" data-l="Recebido ${fmtMes(mesAtu)}">${BRL(r.histMes)}</td>
         <td class="num"><b>${BRL(com)}</b> <span style="color:var(--mut)">(${BRL(comMes)})</span></td>
@@ -64,6 +65,28 @@ async function abaVendedoresAdmin(){
   </div>`;
   const sel = el('vdTipo');
   if(sel) sel.onchange = ()=> el('vdLoginBox').style.display = sel.value==='LOGIN' ? 'block' : 'none';
+  // clique na linha do vendedor: gaveta com os recebimentos dele no ano (dados já em memória)
+  vend.forEach((v,vi)=>{
+    const tr = document.querySelector(`tr[data-vend="${vi}"]`);
+    if(!tr) return;
+    tr.onclick = (e)=>{
+      if(e.target.closest('button') || e.target.closest('input')) return; // não interceptar ações da linha
+      const doVend = hist.filter(h=>h.vendedor===v.nome && h.data_pagamento && h.data_pagamento.startsWith(String(y)))
+        .sort((a,b)=>(+b.valor_pago||0)-(+a.valor_pago||0));
+      const tot = doVend.reduce((s,h)=>s+(+h.valor_pago||0),0);
+      const porCli = {};
+      doVend.forEach(h=>{ const c=h.cliente||'—'; porCli[c]=(porCli[c]||0)+(+h.valor_pago||0); });
+      const topC = Object.entries(porCli).sort((a,b)=>b[1]-a[1]).slice(0,3);
+      abrirOrigem({
+        titulo:'Recebimentos de '+v.nome+' ('+y+')',
+        subtitulo: doVend.length+' títulos · '+BRL(tot)+' · comissão '+(v.comissao_pct||0)+'% = '+BRL(tot*(v.comissao_pct||0)/100)+' · top: '+topC.map(([c,val])=>c+' '+BRL(val)).join(', '),
+        resumoTop:true,
+        colunas:['Data Pagamento','Cliente','R$ Valor Pago'],
+        linhas: doVend.map(h=>[fmtData(h.data_pagamento), h.cliente||'—', +h.valor_pago||0]),
+        nomeCsv:'recebimentos-'+v.nome.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'-'+y+'.csv'
+      });
+    };
+  });
 }
 
 // cria vendedor; se LOGIN, cria a conta de acesso (signup em cliente separado, sem derrubar sua sessão)
