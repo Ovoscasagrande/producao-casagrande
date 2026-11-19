@@ -13,8 +13,8 @@ async function abaHoje(){
     carregar('ovos_pagar','vencimento,saldo,fornecedor,dias_venc,centro_custo'),
     carregar('ovos_producao','data,caixas'),
     carregar('ovos_compras','data,caixas'),
-    carregar('ovos_recebidos_historico','valor_pago','data_pagamento=eq.'+hojeISO),
-    carregar('ovos_pagos_historico','valor','vencimento=eq.'+hojeISO),
+    carregar('ovos_recebidos_historico','valor_pago','data_pagamento.eq.'+hojeISO),
+    carregar('ovos_pagos_historico','valor','vencimento.eq.'+hojeISO),
   ]);
   const recUltDia = recHojeHist.reduce((s,r)=>s+(+r.valor_pago||0),0);
   const pagUltDia = pagHojeHist.reduce((s,r)=>s+(+r.valor||0),0);
@@ -38,6 +38,9 @@ async function abaHoje(){
   const recVenc = rec.filter(r=>r.vencimento<hojeISO);
   const pagVenc = pag.filter(r=>r.vencimento<hojeISO);
 
+  // --- janela de datas para produção/compras ---
+  const cxJ = (rows,a,b) => soma(janela(rows,'data',a,b),'caixas');
+
   // --- produção e compras: semana = últimos 7 dias com dados; mês = do dia 1 até o corte ---
   const inicioSemanaISO = ISO(new Date(y, m, d-6));
   const prodSem = cxJ(prod,inicioSemanaISO,maxDataPC), prodMes = cxJ(prod,`${y}-${String(m+1).padStart(2,'0')}-01`,maxDataPC);
@@ -46,9 +49,6 @@ async function abaHoje(){
   // --- saldo do dia (programado: vence hoje) ---
   const recHoje = soma(janela(rec,'vencimento',hojeISO,hojeISO));
   const pagHoje = soma(janela(pag,'vencimento',hojeISO,hojeISO));
-
-  // --- janela de datas para produção/compras ---
-  const cxJ = (rows,a,b) => soma(janela(rows,'data',a,b),'caixas');
 
   // --- agenda por dia (para o gráfico) ---
   const porDia = {};
