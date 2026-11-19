@@ -216,6 +216,12 @@ function criarGraficoInterativo(canvasId, config){
   cfg.options = cfg.options || {};
   cfg.options.animation = Object.assign({ duration:450, easing:'easeOutQuart' }, cfg.options.animation||{});
   cfg.options.responsive = true;
+  // interação/clique: mode index + intersect false garante que clicar/tocar em QUALQUER
+  // altura da coluna/linha captura o índice (essencial em barras baixas e no celular).
+  // axis: 'y' em barras horizontais (indexAxis:'y'), 'x' no resto.
+  const horiz = cfg.options.indexAxis === 'y';
+  cfg.options.interaction = Object.assign({ mode:'index', intersect:false }, cfg.options.interaction||{});
+  if(!cfg.options.interaction.axis) cfg.options.interaction.axis = horiz ? 'y' : 'x';
   // NÃO forçar maintainAspectRatio:false: os canvas existentes usam atributo height
   // e dependem do aspect-ratio padrão do Chart.js — só aplicar se o config pedir.
   // gradientes verticais suaves nas barras (cores da marca)
