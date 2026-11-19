@@ -109,7 +109,7 @@ function fecharOrigem(){
   DW_CFG = null;
 }
 function abrirOrigem(cfg){
-  // cfg: { titulo, subtitulo, resumoTop, colunas, linhas, nomeCsv }
+  // cfg: { titulo, subtitulo, resumoTop, colunas, linhas, nomeCsv, extra, extra2, ... }
   DW_CFG = cfg;
   el('dwTitulo').textContent = cfg.titulo || 'Origem';
   el('dwSub').textContent = cfg.subtitulo || '';
@@ -139,6 +139,36 @@ function abrirOrigem(cfg){
   el('dwFoot').innerHTML = `<span>${NUM(linhas.length)} registro${linhas.length===1?'':'s'}</span>${tot}`;
   // CSV
   el('dwCsv').onclick = ()=> baixarCSV(cfg.nomeCsv || 'recorte.csv', [colunas, ...linhas]);
+  // visões extras (ex.: resumo por produto + lançamentos diários) — alternador interno
+  // formato: extra:{titulo2,colunas2,linhas2,nomeCsv2}, extra2:{...}, extra3:{...} (N visões)
+  const extras = [];
+  if(cfg.extra) extras.push(cfg.extra);
+  for(let e=2; e<=9; e++){ const x = cfg['extra'+e]; if(x) extras.push(x); }
+  const headEl = el('drawerAnalise').querySelector('.dw-head');
+  let tabsEl = el('dwTabs');
+  if(!tabsEl){ tabsEl = document.createElement('div'); tabsEl.id='dwTabs'; tabsEl.className='dw-tabs'; headEl.after(tabsEl); }
+  if(!extras.length){ tabsEl.style.display='none'; tabsEl.innerHTML=''; }
+  else{
+    tabsEl.style.display='flex';
+    const visoes = [{ titulo:'Visão 1', colunas, linhas, nomeCsv:cfg.nomeCsv }, ...extras.map(x=>({titulo:x.titulo2||'Visão', colunas:x.colunas2, linhas:x.linhas2, nomeCsv:x.nomeCsv2}))];
+    tabsEl.innerHTML = visoes.map((v,i)=>`<button class="${i===0?'on':''}" data-v="${i}">${v.titulo}</button>`).join('');
+    const mostrar = (vi)=>{
+      const v = visoes[vi];
+      tabsEl.querySelectorAll('button').forEach((b,j)=>b.classList.toggle('on', j===vi));
+      const numCols2 = v.colunas.map((c,i)=> v.linhas.length && v.linhas.every(r => typeof r[i]==='number') ? i : -1).filter(i=>i>=0);
+      el('dwTab').innerHTML = '<thead><tr>'+v.colunas.map((c,i)=>`<th${numCols2.includes(i)?' class="num"':''}>${c}</th>`).join('')+'</tr></thead>'
+        + '<tbody>'+v.linhas.map(r=>'<tr>'+r.map((x,i)=>`<td${numCols2.includes(i)?' class="num"':''} data-l="${v.colunas[i]}">${fmtCelula(x,v.colunas[i])}</td>`).join('')+'</tr>').join('')+'</tbody>';
+      const tot2 = numCols2.map(i=>{
+        const soma2 = v.linhas.reduce((s,r)=>s+(r[i]||0),0);
+        const fmt2 = v.colunas[i].toLowerCase().includes('r$')||v.colunas[i].toLowerCase().includes('valor') ? BRL : NUM;
+        return `<span>${v.colunas[i]}: <b>${fmt2(soma2)}</b></span>`;
+      }).join('');
+      el('dwFoot').innerHTML = `<span>${NUM(v.linhas.length)} registro${v.linhas.length===1?'':'s'}</span>${tot2}`;
+      el('dwCsv').onclick = ()=> baixarCSV(v.nomeCsv || 'recorte.csv', [v.colunas, ...v.linhas]);
+    };
+    tabsEl.querySelectorAll('button').forEach(b=> b.onclick = ()=> mostrar(+b.getAttribute('data-v')));
+    mostrar(0);
+  }
   el('drawerOverlay').classList.add('on');
   el('drawerAnalise').classList.add('on');
 }
