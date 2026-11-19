@@ -21,7 +21,7 @@ async function abaPainelVendedor(vendId){
     if(error) throw error;
     hist = data || [];
   } else {
-    const all = await carregar('ovos_recebidos_historico','data_pagamento,cliente,titulo,valor_pago,vendedor','data_pagamento=gte.'+(y-1)+'-01-01');
+    const all = await carregar('ovos_recebidos_historico','data_pagamento,cliente,titulo,valor_pago,vendedor','data_pagamento.gte.'+(y-1)+'-01-01');
     hist = all.filter(r=>r.vendedor===v.nome);
   }
   const anoH = hist.filter(r=>r.data_pagamento && r.data_pagamento.startsWith(String(y)));

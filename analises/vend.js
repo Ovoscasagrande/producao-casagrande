@@ -3,7 +3,7 @@ async function abaVendedoresAdmin(){
   const vend = await carregar('ovos_vendedores');
   const vendas = await carregar('ovos_vendas','vendedor_id,valor_venda,valor_recebido,data_venda');
   const comis = await carregar('ovos_comissoes','vendedor_id,competencia,valor_comissao,status');
-  const hist = await carregar('ovos_recebidos_historico','vendedor,data_pagamento,valor_pago','data_pagamento=gte.'+new Date().getFullYear()+'-01-01');
+  const hist = await carregar('ovos_recebidos_historico','vendedor,data_pagamento,valor_pago','data_pagamento.gte.'+new Date().getFullYear()+'-01-01');
   const agora = new Date();
   const y = agora.getFullYear();
   const mesAtu = `${y}-${String(agora.getMonth()+1).padStart(2,'0')}`;
