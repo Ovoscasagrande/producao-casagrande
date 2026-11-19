@@ -182,14 +182,47 @@ async function abaHoje(){
   for(let i=13;i>=0;i--){ dias14.push(ISO(new Date(y,m,d-i))); }
   const prodD = dias14.map(dt=>cxJ(prod,dt,dt));
   const compD = dias14.map(dt=>cxJ(comp,dt,dt));
-  new Chart(el('chProdComp'), { type:'bar', data:{ labels:dias14.map(dt=>dt.slice(8,10)+'/'+dt.slice(5,7)), datasets:[
+  criarGraficoInterativo('chProdComp', { type:'bar', data:{ labels:dias14.map(dt=>dt.slice(8,10)+'/'+dt.slice(5,7)), datasets:[
     { label:'Produção', data:prodD, backgroundColor:'#f59e0b', borderRadius:3 },
     { label:'Compras', data:compD, backgroundColor:'#0ea5e9', borderRadius:3 },
   ]}, options:{
     interaction:{ mode:'index', intersect:false },
-    plugins:{ legend:{ position:'top', labels:{ usePointStyle:true, boxWidth:10 } } },
-    scales:{ y:{ beginAtZero:true } }
+    plugins:{ legend:{ position:'top', labels:{ usePointStyle:true, boxWidth:10 } },
+      tooltip:{ callbacks:{
+        // tooltip: produção/compras do dia + variação % vs dia anterior (respeita corte maxDataPC)
+        label: (ctx)=>{
+          const i = ctx.dataIndex;
+          const val = ctx.parsed.y;
+          const ant = i>0 ? (ctx.datasetIndex===0?prodD[i-1]:compD[i-1]) : null;
+          const dv = (ant!=null && ant) ? (100*(val-ant)/ant) : null;
+          const base = (ctx.datasetIndex===0?'Produção: ':'Compras (cx 360): ')+NUM(val,0)+' cx';
+          return dv==null ? [base] : [base, 'vs dia anterior: '+(dv>=0?'▲':'▼')+' '+NUM(Math.abs(dv),1)+'%'];
+        }
+      } }
+    },
+    scales:{ y:{ beginAtZero:true } },
+    onClickItem:(i, label, d)=>{
+      const dt = dias14[i]; if(!dt) return;
+      const rec = d===0;
+      const rows = rec ? prod : comp;
+      const doDia = rows.filter(r=>r.data===dt);
+      if(!doDia.length){ status('Sem lançamentos de '+(rec?'produção':'compras')+' em '+fmtData(dt)+'.'); setTimeout(()=>status(null),1800); return; }
+      const totDia = doDia.reduce((s,r)=>s+(+r.caixas||0),0);
+      // ranking agrupado (produto ou granja) com % de participação
+      const porChave = {};
+      doDia.forEach(r=>{ const k = rec ? (r.apresentacao||'—') : (r.granja||'—'); porChave[k]=(porChave[k]||0)+(+r.caixas||0); });
+      const rank = Object.entries(porChave).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[k, v, totDia?+(100*v/totDia).toFixed(1):0]);
+      abrirOrigem({
+        titulo:(rec?'Produção':'Compras (cx 360)')+' de '+fmtData(dt),
+        subtitulo: NUM(totDia,1)+' cx · '+doDia.length+' lançamentos',
+        resumoTop:true,
+        colunas: rec ? ['Apresentação','Caixas','% Part.'] : ['Granja','Caixas (360)','% Conc.'],
+        linhas: rank,
+        nomeCsv:(rec?'producao-':'compras-')+dt+'.csv'
+      });
+    }
   } });
+  hintGrafico('chProdComp');
 
   // série diária
   const labels = serie.map(r=>fmtData(r.data_base));
