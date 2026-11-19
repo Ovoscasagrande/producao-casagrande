@@ -147,6 +147,11 @@ main{max-width:1440px;margin:0 auto;padding:20px}
 .kpi .l{color:var(--mut);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
 .kpi .v{font-size:21px;font-weight:800;color:var(--txt);margin-top:6px;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
 .kpi .s{font-size:11px;color:var(--mut);margin-top:4px;line-height:1.35}
+.kpi.k-click{cursor:pointer;width:100%;text-align:left;font:inherit;border:1px solid var(--line);border-left:3px solid var(--line);border-radius:14px;background:var(--card);transition:box-shadow .15s,transform .15s}
+.kpi.k-click:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.kpi.k-click.k-ok{border-left-color:var(--ok)}
+.kpi.k-click.k-bad{border-left-color:var(--bad)}
+.kpi.k-click.k-gold{border-left-color:var(--acc-bright)}
 
 /* ---------- Cards ---------- */
 .cardbox{
