@@ -125,8 +125,9 @@ function abrirOrigem(cfg){
     res.innerHTML = top.map(r=>`<div class="dw-ri"><span>${String(r[0])}</span><b>${fmt(r[ni])}</b></div>`).join('');
     res.classList.add('on');
   } else { res.innerHTML=''; res.classList.remove('on'); }
-  // tabela
+  // tabela (classe .tabela-cartao + data-l para o mobile)
   const tab = el('dwTab');
+  tab.className = 'tabela-cartao';
   tab.innerHTML = '<thead><tr>'+colunas.map((c,i)=>`<th${numCols.includes(i)?' class="num"':''}>${c}</th>`).join('')+'</tr></thead>'
     + '<tbody>'+linhas.map(r=>'<tr>'+r.map((v,i)=>`<td${numCols.includes(i)?' class="num"':''} data-l="${colunas[i]}">${fmtCelula(v,colunas[i])}</td>`).join('')+'</tr>').join('')+'</tbody>';
   // rodapé com totalização automática das colunas numéricas
@@ -172,15 +173,21 @@ function criarGraficoInterativo(canvasId, config){
   if(GRAFICOS[canvasId]){ GRAFICOS[canvasId].destroy(); delete GRAFICOS[canvasId]; }
   const orfa = Chart.getChart(cv); // instância criada fora do wrapper (new Chart direto)
   if(orfa) orfa.destroy();
-  // clone raso-preservando funções: JSON.stringify descartaria onClickItem
-  const onClickItemUser = config.options && config.options.onClickItem;
+  // clone preservando TODAS as funções (JSON.stringify descartaria callbacks aninhados)
+  const preservar = (orig, clone) => {
+    for(const k in orig){
+      if(typeof orig[k]==='function'){ clone[k] = orig[k]; }
+      else if(orig[k] && typeof orig[k]==='object' && clone[k] && typeof clone[k]==='object'){ preservar(orig[k], clone[k]); }
+    }
+  };
   const cfg = JSON.parse(JSON.stringify(config));
-  if(onClickItemUser) cfg.options.onClickItem = onClickItemUser;
+  preservar(config, cfg);
   // visual padrão da marca
   cfg.options = cfg.options || {};
   cfg.options.animation = Object.assign({ duration:450, easing:'easeOutQuart' }, cfg.options.animation||{});
   cfg.options.responsive = true;
-  cfg.options.maintainAspectRatio = false;
+  // NÃO forçar maintainAspectRatio:false: os canvas existentes usam atributo height
+  // e dependem do aspect-ratio padrão do Chart.js — só aplicar se o config pedir.
   // gradientes verticais suaves nas barras (cores da marca)
   const marca = [getComputedStyle(document.documentElement).getPropertyValue('--acc-bright').trim()||'#ffd400',
                  getComputedStyle(document.documentElement).getPropertyValue('--acc').trim()||'#f59e0b'];
