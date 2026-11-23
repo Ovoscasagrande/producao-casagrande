@@ -272,7 +272,7 @@ function abasDoUsuario(){
   return [
     ['hoje','Hoje'],['receber','Receber'],['pagar','Pagar'],
     ['producao','Produção'],['compras','Compras'],['clientes','Clientes'],
-    ['janela','Janela ERP'],['vendedores','Vendedores']
+    ['janela','Janela ERP'],['vendedores','Vendedores'],['transportadora','Transportadora']
   ];
 }
 let ABA = null;
@@ -293,6 +293,7 @@ async function irAba(id){
     else if(id==='clientes') await abaClientes();
     else if(id==='janela') await abaJanela();
     else if(id==='vendedores') await abaVendedoresAdmin();
+    else if(id==='transportadora') await abaTransportadora();
     else if(id==='meuvend') await abaPainelVendedor(null);
   }catch(e){
     el('conteudo').innerHTML = `<div class="cardbox" style="color:var(--bad)">Erro ao carregar: ${e.message||e}</div>`;
