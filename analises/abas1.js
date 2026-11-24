@@ -267,198 +267,300 @@ async function abaHoje(){
 
 // ---------- Receber ----------
 let chipFaixa = null; // faixa de aging ativa no filtro cruzado
+// ---------- seletor de período (Receber/Pagar) ----------
+const PERIODOS = [
+  ['hoje','Hoje'],['amanha','Amanhã'],['semana','Até sexta'],['prox7','Próx. 7 dias'],
+  ['mes','Este mês'],['prox30','Próx. 30 dias'],['tudo','Tudo']
+];
+function dataDe(d){ return d ? d.split('-').reverse().join('/') : '—'; }
+function janelaPeriodo(tipo, base){
+  // base = data_base da carteira (YYYY-MM-DD); retorna [de, ate] em ISO ou null
+  const b = new Date(base + 'T12:00:00');
+  const iso = d => d.toISOString().slice(0,10);
+  const add = (n)=>{ const x = new Date(b); x.setDate(x.getDate()+n); return x; };
+  switch(tipo){
+    case 'hoje':   return [base, base];
+    case 'amanha': return [iso(add(1)), iso(add(1))];
+    case 'semana': { // hoje até sexta (se hoje for sáb/dom, até a próxima sexta)
+      let ate = new Date(b);
+      const dow = ate.getDay(); // 5=sexta
+      if(dow <= 5) ate = add(5 - dow); else ate = add(5 + 7 - dow);
+      return [base, iso(ate)];
+    }
+    case 'prox7':  return [base, iso(add(7))];
+    case 'mes':    { const fim = new Date(b.getFullYear(), b.getMonth()+1, 0); return [base, iso(fim)]; }
+    case 'prox30': return [base, iso(add(30))];
+    default:       return [null, null]; // tudo
+  }
+}
+function noPeriodo(r, campo, de, ate){
+  const v = r[campo];
+  if(!v) return false;
+  if(de && v < de) return false;
+  if(ate && v > ate) return false;
+  return true;
+}
+function seletorPeriodoHTML(id){
+  return '<div class="periodo-bar" id="'+id+'">' + PERIODOS.map(([k,l]) =>
+    '<button data-p="'+k+'" class="per-btn'+(k==='tudo'?' on':'')+'">'+l+'</button>').join('') + '</div>';
+}
+function ligarSeletorPeriodo(id, aoMudar){
+  let ativo = 'tudo';
+  el(id).querySelectorAll('.per-btn').forEach(b=>{
+    b.onclick = ()=>{
+      ativo = b.getAttribute('data-p');
+      el(id).querySelectorAll('.per-btn').forEach(x=>x.classList.toggle('on', x===b));
+      aoMudar(ativo);
+    };
+  });
+  return ()=> ativo;
+}
+
 async function abaReceber(){
   chipFaixa = null;
   const rows = await carregar('ovos_receber');
   const base = ultimaBase(rows);
-  const rs = rows.filter(r=>r.data_base===base);
-  const faixas = {};
-  rs.forEach(r=>{ const f = r.faixa_aging||'—'; faixas[f]=(faixas[f]||0)+(+r.saldo||0); });
-  const ordF = Object.entries(faixas).sort((a,b)=> a[0].localeCompare(b[0]));
-  const porCli = {};
-  rs.forEach(r=>{ const c=r.cliente||'—'; porCli[c]=porCli[c]||{tot:0,venc:0,n:0}; porCli[c].tot+=+r.saldo||0; if(r.dias_atraso>0) porCli[c].venc+=+r.saldo||0; porCli[c].n++; });
-  const top = Object.entries(porCli).sort((a,b)=>b[1].venc-a[1].venc).slice(0,12);
-  const tot = rs.reduce((s,r)=>s+(+r.saldo||0),0), venc = rs.filter(r=>r.dias_atraso>0).reduce((s,r)=>s+(+r.saldo||0),0);
+  const rsBase = rows.filter(r=>r.data_base===base);
   el('conteudo').innerHTML = `
   <div class="section-head">
     <h2>Contas a Receber</h2>
     <span class="meta">carteira aberta · base ${fmtData(base)}</span>
     <button id="csvRec" class="btn-sm" style="margin-left:auto">baixar CSV</button>
   </div>
-  <div class="kpis">
-    <div class="kpi k-gold"><div class="l">Total em aberto</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} títulos · base ${fmtData(base)}</div></div>
-    <div class="kpi k-bad"><div class="l">Vencido</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${(100*venc/tot).toFixed(1)}% da carteira</div></div>
+  <div class="cardbox" style="padding:12px 14px">
+    <div style="font-size:11px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Período de vencimento</div>
+    ${seletorPeriodoHTML('perRec')}
+    <div id="recResumo" style="margin-top:10px;font-size:13px"></div>
   </div>
+  <div class="kpis" id="kpisRec"></div>
   <div id="chipAging" class="chip-filtro"></div>
   <div class="two">
   <div class="cardbox"><h3>Aging por faixa (R$)</h3><canvas id="chAging"></canvas></div>
-  <div class="cardbox"><h3>Top 12 clientes por vencido</h3>
+  <div class="cardbox"><h3 id="recTopH3">Top 12 clientes por vencido</h3>
     <table><tr><th>Cliente</th><th class="num">Aberto</th><th class="num">Vencido</th><th class="num">Tít.</th></tr>
-    ${top.map(([c,v])=>`<tr><td>${c}</td><td class="num">${BRL(v.tot)}</td><td class="num" style="color:${v.venc>0?'var(--bad)':'inherit'}">${BRL(v.venc)}</td><td class="num">${v.n}</td></tr>`).join('')}
-    </table></div>
+    <tbody id="recTopBody"></tbody></table></div>
   </div>
   <div class="cardbox">
-    <div class="cardbox-head"><h3>Títulos em aberto</h3><span class="hint" id="recTabHint">${rs.length} títulos</span></div>
-    <div class="table-wrap"><table id="tabRecTitulos"><thead><tr><th>Cliente</th><th>Vendedor</th><th>Vencimento</th><th>Faixa</th><th class="num">Saldo</th></tr></thead><tbody>
-    ${[...rs].sort((a,b)=>b.dias_atraso-a.dias_atraso).map(r=>`<tr data-faixa="${(r.faixa_aging||'—').replace(/"/g,'&quot;')}"><td>${r.cliente||'—'}</td><td>${r.vendedor||'—'}</td><td>${fmtData(r.vencimento)}</td><td><span class="badge ${r.dias_atraso>0?'r':'g'}">${r.faixa_aging||'—'}</span></td><td class="num">${BRL(+r.saldo||0)}</td></tr>`).join('')}
-    </tbody></table></div>
+    <div class="cardbox-head"><h3>Títulos em aberto</h3><span class="hint" id="recTabHint"></span></div>
+    <div class="table-wrap"><table id="tabRecTitulos"><thead><tr><th>Cliente</th><th>Vendedor</th><th>Vencimento</th><th>Faixa</th><th class="num">Saldo</th></tr></thead><tbody id="recTabBody"></tbody></table></div>
   </div>`;
-  // aging: tooltip rico + filtro cruzado + gaveta por cliente
   const corFaixa = '#ffd400';
-  criarGraficoInterativo('chAging', { type:'bar', data:{ labels:ordF.map(x=>x[0]), datasets:[{ label:'Saldo (R$)', data:ordF.map(x=>x[1]), backgroundColor:corFaixa }] },
-    options:{
-      plugins:{ legend:{display:false},
-        tooltip:{ callbacks:{
-          label: (ctx)=>{
-            const faixa = ordF[ctx.dataIndex][0];
-            const nTit = rs.filter(r=>(r.faixa_aging||'—')===faixa).length;
-            const pct = 100*ctx.parsed.y/tot;
-            return ['Valor: '+BRL(ctx.parsed.y), pct.toFixed(1)+'% da carteira', nTit+' títulos'];
-          }
-        } }
-      },
-      scales:{ y:{ ticks:{ callback:v=>'R$ '+(v/1e3).toFixed(0)+'k' } }, x:{ ticks:{ autoSkip:false, font:{size:10} } } },
-      onClickItem:(i, label)=>{
-        const faixa = ordF[i][0];
-        const jaAtiva = chipFaixa===faixa;
-        // limpa filtro anterior
-        chipFaixa = null;
-        renderChipFiltro('chipAging', null);
-        document.querySelectorAll('#tabRecTitulos tbody tr').forEach(tr=>tr.style.display='');
-        const g = Chart.getChart(el('chAging'));
-        if(g) g.data.datasets[0].backgroundColor = corFaixa;
-        if(jaAtiva){ return; } // segundo clique no mesmo: só limpa
-        // aplica filtro
-        chipFaixa = faixa;
-        const naFaixa = rs.filter(r=>(r.faixa_aging||'—')===faixa);
-        document.querySelectorAll('#tabRecTitulos tbody tr').forEach(tr=>{ tr.style.display = tr.getAttribute('data-faixa')===faixa ? '' : 'none'; });
-        el('recTabHint').textContent = naFaixa.length+' títulos na faixa '+faixa;
-        renderChipFiltro('chipAging', 'Faixa: '+faixa+' · '+BRL(naFaixa.reduce((s,r)=>s+(+r.saldo||0),0)), ()=>{
+  let RS = rsBase; // títulos no período selecionado
+
+  function render(sep){
+    const rs = RS;
+    const tot = rs.reduce((s,r)=>s+(+r.saldo||0),0);
+    const venc = rs.filter(r=>r.dias_atraso>0).reduce((s,r)=>s+(+r.saldo||0),0);
+    // KPIs
+    el('kpisRec').innerHTML = `
+      <button class="kpi k-click k-gold" id="kRecTot"><div class="l">Total no período</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} títulos · clique p/ ver todos</div></button>
+      <div class="kpi k-bad"><div class="l">Vencido no período</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${tot?(100*venc/tot).toFixed(1):'0'}% do período</div></div>`;
+    el('kRecTot').onclick = ()=> abrirOrigem({
+      titulo:'Recebíveis do período', subtitulo: BRL(tot)+' · '+rs.length+' títulos',
+      resumoTop:true, colunas:['Vencimento','Cliente','Vendedor','Saldo','Dias atraso'],
+      linhas: [...rs].sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||'')).map(r=>[fmtData(r.vencimento), r.cliente||'—', r.vendedor||'—', +r.saldo||0, r.dias_atraso]),
+      nomeCsv:'receber-periodo.csv'
+    });
+    // aging
+    const faixas = {};
+    rs.forEach(r=>{ const f = r.faixa_aging||'—'; faixas[f]=(faixas[f]||0)+(+r.saldo||0); });
+    const ordF = Object.entries(faixas).sort((a,b)=> a[0].localeCompare(b[0]));
+    criarGraficoInterativo('chAging', { type:'bar', data:{ labels:ordF.map(x=>x[0]), datasets:[{ label:'Saldo (R$)', data:ordF.map(x=>x[1]), backgroundColor:corFaixa }] },
+      options:{
+        plugins:{ legend:{display:false},
+          tooltip:{ callbacks:{
+            label: (ctx)=>{
+              const faixa = ordF[ctx.dataIndex][0];
+              const nTit = rs.filter(r=>(r.faixa_aging||'—')===faixa).length;
+              const pct = tot ? 100*ctx.parsed.y/tot : 0;
+              return ['Valor: '+BRL(ctx.parsed.y), pct.toFixed(1)+'% do período', nTit+' títulos'];
+            }
+          } }
+        },
+        scales:{ y:{ ticks:{ callback:v=>'R$ '+(v/1e3).toFixed(0)+'k' } }, x:{ ticks:{ autoSkip:false, font:{size:10} } } },
+        onClickItem:(i, label)=>{
+          const faixa = ordF[i][0];
+          const jaAtiva = chipFaixa===faixa;
           chipFaixa = null;
+          renderChipFiltro('chipAging', null);
           document.querySelectorAll('#tabRecTitulos tbody tr').forEach(tr=>tr.style.display='');
-          el('recTabHint').textContent = rs.length+' títulos';
-          const g2 = Chart.getChart(el('chAging'));
-          if(g2) g2.data.datasets[0].backgroundColor = corFaixa, g2.update();
-        });
-        // destaca a barra clicada (opacidade nas outras)
-        const g3 = Chart.getChart(el('chAging'));
-        if(g3){
-          g3.data.datasets[0].backgroundColor = ordF.map((x,j)=> j===i ? corFaixa : 'rgba(255,212,0,.35)');
-          g3.update();
+          const g = Chart.getChart(el('chAging'));
+          if(g) g.data.datasets[0].backgroundColor = corFaixa;
+          if(jaAtiva){ return; }
+          chipFaixa = faixa;
+          const naFaixa = rs.filter(r=>(r.faixa_aging||'—')===faixa);
+          document.querySelectorAll('#tabRecTitulos tbody tr').forEach(tr=>{ tr.style.display = tr.getAttribute('data-faixa')===faixa ? '' : 'none'; });
+          el('recTabHint').textContent = naFaixa.length+' títulos na faixa '+faixa;
+          renderChipFiltro('chipAging', 'Faixa: '+faixa+' · '+BRL(naFaixa.reduce((s,r)=>s+(+r.saldo||0),0)), ()=>{
+            chipFaixa = null;
+            document.querySelectorAll('#tabRecTitulos tbody tr').forEach(tr=>tr.style.display='');
+            el('recTabHint').textContent = rs.length+' títulos';
+            const g2 = Chart.getChart(el('chAging'));
+            if(g2) g2.data.datasets[0].backgroundColor = corFaixa, g2.update();
+          });
+          const g3 = Chart.getChart(el('chAging'));
+          if(g3){
+            g3.data.datasets[0].backgroundColor = ordF.map((x,j)=> j===i ? corFaixa : 'rgba(255,212,0,.35)');
+            g3.update();
+          }
         }
-      }
-    } });
-  hintGrafico('chAging');
-  // duplo clique na faixa: gaveta agrupada por cliente
-  el('chAging').addEventListener('dblclick', ()=>{
-    if(chipFaixa==null) return;
-    abrirFaixaGaveta();
-  });
-  function abrirFaixaGaveta(){
-    const naFaixa = rs.filter(r=>(r.faixa_aging||'—')===chipFaixa);
-    const porC = {};
-    naFaixa.forEach(r=>{ const c=r.cliente||'—'; porC[c]=porC[c]||{tot:0,n:0}; porC[c].tot+=+r.saldo||0; porC[c].n++; });
-    const linhas = Object.entries(porC).sort((a,b)=>b[1].tot-a[1].tot).map(([c,v])=>[c, v.tot, v.n]);
+      } });
+    hintGrafico('chAging');
+    // top clientes
+    const porCli = {};
+    rs.forEach(r=>{ const c=r.cliente||'—'; porCli[c]=porCli[c]||{tot:0,venc:0,n:0}; porCli[c].tot+=+r.saldo||0; if(r.dias_atraso>0) porCli[c].venc+=+r.saldo||0; porCli[c].n++; });
+    const top = Object.entries(porCli).sort((a,b)=>b[1].venc-a[1].venc).slice(0,12);
+    el('recTopBody').innerHTML = top.map(([c,v])=>`<tr style="cursor:pointer" data-cli="${c.replace(/"/g,'&quot;')}"><td>${c}</td><td class="num">${BRL(v.tot)}</td><td class="num" style="color:${v.venc>0?'var(--bad)':'inherit'}">${BRL(v.venc)}</td><td class="num">${v.n}</td></tr>`).join('');
+    [...el('recTopBody').querySelectorAll('tr')].forEach((tr,i)=>{ tr.onclick = ()=> gavetaCliente(top[i][0]); });
+    // tabela
+    el('recTabBody').innerHTML = [...rs].sort((a,b)=>b.dias_atraso-a.dias_atraso).map(r=>`<tr data-faixa="${(r.faixa_aging||'—').replace(/"/g,'&quot;')}"><td>${r.cliente||'—'}</td><td>${r.vendedor||'—'}</td><td>${fmtData(r.vencimento)}</td><td><span class="badge ${r.dias_atraso>0?'r':'g'}">${r.faixa_aging||'—'}</span></td><td class="num">${BRL(+r.saldo||0)}</td></tr>`).join('');
+    el('recTabHint').textContent = rs.length+' títulos';
+  }
+  function gavetaCliente(nome){
+    const doCli = RS.filter(r=>(r.cliente||'—')===nome);
     abrirOrigem({
-      titulo:'Faixa '+chipFaixa+' — por cliente',
-      subtitulo: naFaixa.length+' títulos · '+BRL(naFaixa.reduce((s,r)=>s+(+r.saldo||0),0)),
-      resumoTop:true,
-      colunas:['Cliente','R$ Saldo na faixa','Títulos'],
-      linhas,
-      nomeCsv:'faixa-'+chipFaixa.replace(/[^a-z0-9]+/gi,'-')+'-por-cliente.csv'
+      titulo:'Recebíveis de '+nome, subtitulo: BRL(doCli.reduce((s,r)=>s+(+r.saldo||0),0))+' · '+doCli.length+' títulos',
+      resumoTop:true, colunas:['Vencimento','Título','Pedido','Saldo','Dias atraso'],
+      linhas: doCli.sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||'')).map(r=>[fmtData(r.vencimento), r.titulo||'—', r.pedido||'—', +r.saldo||0, r.dias_atraso]),
+      nomeCsv:'receber-cliente.csv'
     });
   }
-  el('csvRec').onclick = () => baixarCSV('a-receber.csv',[['Cliente','Vendedor','Vencimento','Faixa','Saldo','Dias atraso'],...rs.map(r=>[r.cliente,r.vendedor,r.vencimento,r.faixa_aging,(+r.saldo).toFixed(2),r.dias_atraso])]);
+  ligarSeletorPeriodo('perRec', (p)=>{
+    const [de, ate] = janelaPeriodo(p, base);
+    RS = rsBase.filter(r=>noPeriodo(r, 'vencimento', de, ate));
+    const tot = RS.reduce((s,r)=>s+(+r.saldo||0),0);
+    const lbl = PERIODOS.find(x=>x[0]===p)[1];
+    el('recResumo').innerHTML = de
+      ? `💰 <b>${BRL(tot)}</b> para receber entre <b>${dataDe(de)}</b> e <b>${dataDe(ate)}</b> — ${RS.length} títulos`
+      : `💰 <b>${BRL(tot)}</b> no total da carteira — ${RS.length} títulos`;
+    render();
+  });
+  el('csvRec').onclick = () => baixarCSV('a-receber.csv',[['Cliente','Vendedor','Vencimento','Faixa','Saldo','Dias atraso'],...RS.map(r=>[r.cliente,r.vendedor,r.vencimento,r.faixa_aging,(+r.saldo).toFixed(2),r.dias_atraso])]);
+  // estado inicial: tudo
+  el('perRec').querySelector('[data-p="tudo"]').click();
 }
 
-// ---------- Pagar ----------
 async function abaPagar(){
   const rows = await carregar('ovos_pagar');
   const base = ultimaBase(rows);
-  const rs = rows.filter(r=>r.data_base===base);
-  const porCC = {}, porForn = {};
-  rs.forEach(r=>{
-    const cc = r.centro_custo||'Não Classificado';
-    porCC[cc]=porCC[cc]||{tot:0,n:0}; porCC[cc].tot+=+r.saldo||0; porCC[cc].n++;
-    const f = r.fornecedor||'—';
-    porForn[f]=porForn[f]||{tot:0,venc:0,n:0}; porForn[f].tot+=+r.saldo||0; if(r.dias_venc>0) porForn[f].venc+=+r.saldo||0; porForn[f].n++;
-  });
-  const ccOrd = Object.entries(porCC).sort((a,b)=>b[1].tot-a[1].tot).slice(0,10);
-  const fOrd = Object.entries(porForn).sort((a,b)=>b[1].tot-a[1].tot).slice(0,12);
-  const tot = rs.reduce((s,r)=>s+(+r.saldo||0),0), venc = rs.filter(r=>r.dias_venc>0).reduce((s,r)=>s+(+r.saldo||0),0);
+  const rsBase = rows.filter(r=>r.data_base===base);
   el('conteudo').innerHTML = `
   <div class="section-head">
     <h2>Contas a Pagar</h2>
     <span class="meta">compromissos em aberto · base ${fmtData(base)}</span>
     <button id="csvPag" class="btn-sm" style="margin-left:auto">baixar CSV</button>
   </div>
-  <div class="kpis">
-    <div class="kpi k-gold"><div class="l">Total em aberto</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} títulos · base ${fmtData(base)}</div></div>
-    <div class="kpi k-bad"><div class="l">Vencido</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${(100*venc/tot).toFixed(1)}% do total</div></div>
+  <div class="cardbox" style="padding:12px 14px">
+    <div style="font-size:11px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Período de vencimento</div>
+    ${seletorPeriodoHTML('perPag')}
+    <div id="pagResumo" style="margin-top:10px;font-size:13px"></div>
   </div>
+  <div class="kpis" id="kpisPag"></div>
   <div id="chipCC" class="chip-filtro"></div>
   <div class="two">
   <div class="cardbox"><h3>Top 10 centros de custo (R$)</h3><canvas id="chCC"></canvas></div>
   <div class="cardbox"><h3>Top 12 fornecedores</h3>
     <table><tr><th>Fornecedor</th><th class="num">Aberto</th><th class="num">Vencido</th><th class="num">Tít.</th></tr>
-    ${fOrd.map(([f,v])=>`<tr><td>${f}</td><td class="num">${BRL(v.tot)}</td><td class="num" style="color:${v.venc>0?'var(--bad)':'inherit'}">${BRL(v.venc)}</td><td class="num">${v.n}</td></tr>`).join('')}
-    </table></div>
+    <tbody id="pagTopBody"></tbody></table></div>
   </div>
   <div class="cardbox">
-    <div class="cardbox-head"><h3>Títulos a pagar</h3><span class="hint" id="pagTabHint">${rs.length} títulos</span></div>
-    <div class="table-wrap"><table id="tabPagTitulos"><thead><tr><th>Fornecedor</th><th>Centro de custo</th><th>Vencimento</th><th class="num">Saldo</th></tr></thead><tbody>
-    ${[...rs].sort((a,b)=>b.dias_venc-a.dias_venc).map(r=>`<tr data-cc="${(r.centro_custo||'Não Classificado').replace(/"/g,'&quot;')}"><td>${r.fornecedor||'—'}</td><td>${r.centro_custo||'Não Classificado'}</td><td>${fmtData(r.vencimento)}</td><td class="num">${BRL(+r.saldo||0)}</td></tr>`).join('')}
-    </tbody></table></div>
+    <div class="cardbox-head"><h3>Títulos a pagar</h3><span class="hint" id="pagTabHint"></span></div>
+    <div class="table-wrap"><table id="tabPagTitulos"><thead><tr><th>Fornecedor</th><th>Centro de custo</th><th>Vencimento</th><th class="num">Saldo</th></tr></thead><tbody id="pagTabBody"></tbody></table></div>
   </div>`;
-  // centro de custo: tooltip rico + filtro cruzado com toggle
   const corCC = '#ffd400';
   let ccAtivo = null;
-  criarGraficoInterativo('chCC', { type:'bar', data:{ labels:ccOrd.map(x=>x[0]), datasets:[{ label:'Saldo (R$)', data:ccOrd.map(x=>x[1].tot), backgroundColor:corCC }] },
-    options:{
-      indexAxis:'y',
-      plugins:{ legend:{display:false},
-        tooltip:{ callbacks:{
-          label: (ctx)=>{
-            const cc = ccOrd[ctx.dataIndex][0];
-            const doCC = rs.filter(r=>(r.centro_custo||'Não Classificado')===cc);
-            const pct = 100*ctx.parsed.x/tot;
-            const forn = [...doCC.reduce((m,r)=>{ const f=r.fornecedor||'—'; m.set(f,(m.get(f)||0)+(+r.saldo||0)); return m; }, new Map())]
-              .sort((a,b)=>b[1]-a[1])[0];
-            return ['Valor: '+BRL(ctx.parsed.x), pct.toFixed(1)+'% do total a pagar', 'Principal: '+forn[0]+' ('+BRL(forn[1])+')', doCC.length+' títulos'];
-          }
-        } }
-      },
-      scales:{ x:{ ticks:{ callback:v=>'R$ '+(v/1e3).toFixed(0)+'k' } } },
-      onClickItem:(i, label)=>{
-        const cc = ccOrd[i][0];
-        const jaAtivo = ccAtivo===cc;
-        // limpa estado anterior
-        ccAtivo = null;
-        renderChipFiltro('chipCC', null);
-        document.querySelectorAll('#tabPagTitulos tbody tr').forEach(tr=>tr.style.display='');
-        const g = Chart.getChart(el('chCC'));
-        if(g) g.data.datasets[0].backgroundColor = corCC;
-        if(jaAtivo){ return; } // segundo clique no mesmo: só limpa
-        // aplica filtro
-        ccAtivo = cc;
-        const doCC = rs.filter(r=>(r.centro_custo||'Não Classificado')===cc);
-        document.querySelectorAll('#tabPagTitulos tbody tr').forEach(tr=>{ tr.style.display = tr.getAttribute('data-cc')===cc ? '' : 'none'; });
-        el('pagTabHint').textContent = doCC.length+' títulos em '+cc;
-        renderChipFiltro('chipCC', 'Centro de custo: '+cc+' · '+BRL(doCC.reduce((s,r)=>s+(+r.saldo||0),0)), ()=>{
+  let RS = rsBase;
+
+  function render(){
+    const rs = RS;
+    const tot = rs.reduce((s,r)=>s+(+r.saldo||0),0);
+    const venc = rs.filter(r=>r.dias_venc>0).reduce((s,r)=>s+(+r.saldo||0),0);
+    el('kpisPag').innerHTML = `
+      <button class="kpi k-click k-gold" id="kPagTot"><div class="l">Total no período</div><div class="v">${BRL(tot)}</div><div class="s">${rs.length} títulos · clique p/ ver todos</div></button>
+      <div class="kpi k-bad"><div class="l">Vencido no período</div><div class="v" style="color:var(--bad)">${BRL(venc)}</div><div class="s">${tot?(100*venc/tot).toFixed(1):'0'}% do período</div></div>`;
+    el('kPagTot').onclick = ()=> abrirOrigem({
+      titulo:'Pagamentos do período', subtitulo: BRL(tot)+' · '+rs.length+' títulos',
+      resumoTop:true, colunas:['Vencimento','Fornecedor','Centro de custo','Saldo','Dias venc'],
+      linhas: [...rs].sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||'')).map(r=>[fmtData(r.vencimento), r.fornecedor||'—', r.centro_custo||'—', +r.saldo||0, r.dias_venc]),
+      nomeCsv:'pagar-periodo.csv'
+    });
+    const porCC = {}, porForn = {};
+    rs.forEach(r=>{
+      const cc = r.centro_custo||'Não Classificado';
+      porCC[cc]=porCC[cc]||{tot:0,n:0}; porCC[cc].tot+=+r.saldo||0; porCC[cc].n++;
+      const f = r.fornecedor||'—';
+      porForn[f]=porForn[f]||{tot:0,venc:0,n:0}; porForn[f].tot+=+r.saldo||0; if(r.dias_venc>0) porForn[f].venc+=+r.saldo||0; porForn[f].n++;
+    });
+    const ccOrd = Object.entries(porCC).sort((a,b)=>b[1].tot-a[1].tot).slice(0,10);
+    const fOrd = Object.entries(porForn).sort((a,b)=>b[1].tot-a[1].tot).slice(0,12);
+    criarGraficoInterativo('chCC', { type:'bar', data:{ labels:ccOrd.map(x=>x[0]), datasets:[{ label:'Saldo (R$)', data:ccOrd.map(x=>x[1].tot), backgroundColor:corCC }] },
+      options:{
+        indexAxis:'y',
+        plugins:{ legend:{display:false},
+          tooltip:{ callbacks:{
+            label: (ctx)=>{
+              const cc = ccOrd[ctx.dataIndex][0];
+              const doCC = rs.filter(r=>(r.centro_custo||'Não Classificado')===cc);
+              const pct = tot ? 100*ctx.parsed.x/tot : 0;
+              const forn = [...doCC.reduce((m,r)=>{ const f=r.fornecedor||'—'; m.set(f,(m.get(f)||0)+(+r.saldo||0)); return m; }, new Map())]
+                .sort((a,b)=>b[1]-a[1])[0];
+              return ['Valor: '+BRL(ctx.parsed.x), pct.toFixed(1)+'% do período', 'Principal: '+forn[0]+' ('+BRL(forn[1])+')', doCC.length+' títulos'];
+            }
+          } }
+        },
+        scales:{ x:{ ticks:{ callback:v=>'R$ '+(v/1e3).toFixed(0)+'k' } } },
+        onClickItem:(i, label)=>{
+          const cc = ccOrd[i][0];
+          const jaAtivo = ccAtivo===cc;
           ccAtivo = null;
+          renderChipFiltro('chipCC', null);
           document.querySelectorAll('#tabPagTitulos tbody tr').forEach(tr=>tr.style.display='');
-          el('pagTabHint').textContent = rs.length+' títulos';
-          const g2 = Chart.getChart(el('chCC'));
-          if(g2) g2.data.datasets[0].backgroundColor = corCC, g2.update();
-        });
-        // destaca a barra selecionada
-        const g3 = Chart.getChart(el('chCC'));
-        if(g3){
-          g3.data.datasets[0].backgroundColor = ccOrd.map((x,j)=> j===i ? corCC : 'rgba(255,212,0,.35)');
-          g3.update();
+          const g = Chart.getChart(el('chCC'));
+          if(g) g.data.datasets[0].backgroundColor = corCC;
+          if(jaAtivo){ return; }
+          ccAtivo = cc;
+          const doCC = rs.filter(r=>(r.centro_custo||'Não Classificado')===cc);
+          document.querySelectorAll('#tabPagTitulos tbody tr').forEach(tr=>{ tr.style.display = tr.getAttribute('data-cc')===cc ? '' : 'none'; });
+          el('pagTabHint').textContent = doCC.length+' títulos em '+cc;
+          renderChipFiltro('chipCC', 'Centro de custo: '+cc+' · '+BRL(doCC.reduce((s,r)=>s+(+r.saldo||0),0)), ()=>{
+            ccAtivo = null;
+            document.querySelectorAll('#tabPagTitulos tbody tr').forEach(tr=>tr.style.display='');
+            el('pagTabHint').textContent = rs.length+' títulos';
+            const g2 = Chart.getChart(el('chCC'));
+            if(g2) g2.data.datasets[0].backgroundColor = corCC, g2.update();
+          });
+          const g3 = Chart.getChart(el('chCC'));
+          if(g3){
+            g3.data.datasets[0].backgroundColor = ccOrd.map((x,j)=> j===i ? corCC : 'rgba(255,212,0,.35)');
+            g3.update();
+          }
         }
-      }
-    } });
-  hintGrafico('chCC');
-  el('csvPag').onclick = () => baixarCSV('a-pagar.csv',[['Fornecedor','Vencimento','Centro custo','Saldo','Dias venc'],...rs.map(r=>[r.fornecedor,r.vencimento,r.centro_custo,(+r.saldo).toFixed(2),r.dias_venc])]);
+      } });
+    hintGrafico('chCC');
+    el('pagTopBody').innerHTML = fOrd.map(([f,v])=>`<tr style="cursor:pointer" data-forn="${f.replace(/"/g,'&quot;')}"><td>${f}</td><td class="num">${BRL(v.tot)}</td><td class="num" style="color:${v.venc>0?'var(--bad)':'inherit'}">${BRL(v.venc)}</td><td class="num">${v.n}</td></tr>`).join('');
+    [...el('pagTopBody').querySelectorAll('tr')].forEach((tr,i)=>{ tr.onclick = ()=> gavetaForn(fOrd[i][0]); });
+    el('pagTabBody').innerHTML = [...rs].sort((a,b)=>b.dias_venc-a.dias_venc).map(r=>`<tr data-cc="${(r.centro_custo||'Não Classificado').replace(/"/g,'&quot;')}"><td>${r.fornecedor||'—'}</td><td>${r.centro_custo||'Não Classificado'}</td><td>${fmtData(r.vencimento)}</td><td class="num">${BRL(+r.saldo||0)}</td></tr>`).join('');
+    el('pagTabHint').textContent = rs.length+' títulos';
+  }
+  function gavetaForn(nome){
+    const doF = RS.filter(r=>(r.fornecedor||'—')===nome);
+    abrirOrigem({
+      titulo:'Pagamentos a '+nome, subtitulo: BRL(doF.reduce((s,r)=>s+(+r.saldo||0),0))+' · '+doF.length+' títulos',
+      resumoTop:true, colunas:['Vencimento','NF','Referência','Saldo','Dias venc'],
+      linhas: doF.sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||'')).map(r=>[fmtData(r.vencimento), r.nf||'—', r.referencia||'—', +r.saldo||0, r.dias_venc]),
+      nomeCsv:'pagar-fornecedor.csv'
+    });
+  }
+  ligarSeletorPeriodo('perPag', (p)=>{
+    const [de, ate] = janelaPeriodo(p, base);
+    RS = rsBase.filter(r=>noPeriodo(r, 'vencimento', de, ate));
+    const tot = RS.reduce((s,r)=>s+(+r.saldo||0),0);
+    const lbl = PERIODOS.find(x=>x[0]===p)[1];
+    el('pagResumo').innerHTML = de
+      ? `💸 <b>${BRL(tot)}</b> para pagar entre <b>${dataDe(de)}</b> e <b>${dataDe(ate)}</b> — ${RS.length} títulos`
+      : `💸 <b>${BRL(tot)}</b> no total em aberto — ${RS.length} títulos`;
+    render();
+  });
+  el('csvPag').onclick = () => baixarCSV('a-pagar.csv',[['Fornecedor','Vencimento','Centro custo','Saldo','Dias venc'],...RS.map(r=>[r.fornecedor,r.vencimento,r.centro_custo,(+r.saldo).toFixed(2),r.dias_venc])]);
+  el('perPag').querySelector('[data-p="tudo"]').click();
 }
