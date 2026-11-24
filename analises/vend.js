@@ -126,8 +126,11 @@ async function salvaPct(id){
   status('Salvando…');
   const { error } = await sb.from('ovos_vendedores').update({ comissao_pct:pct }).eq('id', id);
   status(null);
-  status(error ? ('Erro: '+error.message) : 'Comissão atualizada ✓');
-  if(!error){ limparCache(); setTimeout(status, 2500, null); }
+  if(error){ status('Erro: '+error.message); return; }
+  limparCache();
+  await abaVendedoresAdmin(); // re-renderiza com o valor novo
+  status('Comissão atualizada ✓');
+  setTimeout(status, 2500, null);
 }
 
 async function toggleVend(id, ativo){

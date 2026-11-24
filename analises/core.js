@@ -32,9 +32,20 @@ async function aposLogin(){
   const { data:{ user } } = await sb.auth.getUser();
   if(!user){ status(null); return; }
   // 1) usuário do app CASAGRANDE (gerência)?
-  const { data: u } = await sb.from('usuarios').select('id,nome,perfil,empresa,ativo').eq('id', user.id).maybeSingle();
+  const { data: u } = await sb.from('usuarios').select('id,nome,perfil,empresa,ativo,perfis_extra,is_master').eq('id', user.id).maybeSingle();
   if(u && u.ativo && u.perfil!=='pendente' && ['OVOS','AMBAS','TODAS'].includes(u.empresa)){
-    ME = { id:user.id, nome:u.nome, perfil:u.perfil, empresa:u.empresa, ativo:true, tipo:'GERENCIA' };
+    // abas do perfil principal + dos extras (tabela ovos_perfis)
+    const meusPerfis = [u.perfil, ...(u.perfis_extra||[])];
+    let abas = [], abasExtra = [];
+    try{
+      const { data: pf } = await sb.from('ovos_perfis').select('perfil,abas').in('perfil', meusPerfis);
+      (pf||[]).forEach(p=>{
+        if(p.perfil===u.perfil) abas = p.abas||[];
+        else abasExtra = abasExtra.concat(p.abas||[]);
+      });
+    }catch(e){ /* fallback abaixo */ }
+    ME = { id:user.id, nome:u.nome, perfil:u.perfil, empresa:u.empresa, ativo:true, tipo:'GERENCIA',
+           perfis_extra:u.perfis_extra||[], is_master:!!u.is_master, abas, abasExtra };
   } else {
     // 2) vendedor com login próprio?
     const { data: v } = await sb.from('ovos_vendedores').select('id,nome,comissao_pct,tipo,ativo').eq('usuario_id', user.id).maybeSingle();
@@ -49,10 +60,42 @@ async function aposLogin(){
   el('app').style.display='block';
   el('userChip').innerHTML = `<b>${ME.nome}</b> · <span>${ME.perfil}</span> <button onclick="logout()">sair</button>`;
   montarAbas();
-  await irAba(ME.tipo==='VENDEDOR' ? 'meuvend' : 'hoje');
+  const primeira = abasDoUsuario()[0];
+  await irAba(ME.tipo==='VENDEDOR' ? 'meuvend' : (primeira ? primeira[0] : 'hoje'));
 }
 
 async function logout(){ await sb.auth.signOut(); location.reload(); }
+
+// recuperação de senha (e-mail do Supabase Auth)
+async function esqueciSenha(){
+  const email = el('logEmail').value.trim().toLowerCase();
+  if(!email){ el('logErr').textContent = 'Digite seu e-mail acima e clique novamente.'; return; }
+  status('Enviando e-mail de recuperação…');
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: location.origin + location.pathname
+  });
+  status(null);
+  el('logErr').textContent = error ? ('Erro: '+(error.message||error))
+    : '✓ Enviado! Verifique seu e-mail — o link redefine a senha.';
+}
+
+// criar conta (auto-cadastro — cai como 'pendente' para o gerente aprovar)
+async function criarConta(){
+  const email = el('logEmail').value.trim().toLowerCase();
+  const pass = el('logPass').value;
+  const nome = el('logNome') ? el('logNome').value.trim() : '';
+  if(!email || pass.length<6){ el('logErr').textContent = 'E-mail e senha (mín. 6 caracteres).'; return; }
+  status('Criando conta…');
+  const { data, error } = await sb.auth.signUp({ email, password: pass });
+  status(null);
+  if(error){ el('logErr').textContent = 'Erro: '+(error.message||error); return; }
+  if(data && data.user){
+    try{
+      await sb.from('usuarios').insert({ id:data.user.id, email, nome: nome||email.split('@')[0], perfil:'pendente', empresa:'OVOS', ativo:true });
+    }catch(e){ /* policy pode bloquear; gerente cadastra na aba Usuários */ }
+    el('logErr').textContent = '✓ Conta criada! Aguardando aprovação do gerente.';
+  }
+}
 
 sb.auth.onAuthStateChange((ev)=>{
   if(ev==='SIGNED_OUT' && ME){ location.reload(); }
@@ -266,14 +309,23 @@ function hintGrafico(canvasId, texto){
   (head || card).appendChild(hint);
 }
 
-// ---------- abas ----------
+// ---------- abas (dinâmicas por perfil — tabela ovos_perfis) ----------
+const ROTULO_ABA = {
+  hoje:'Hoje', receber:'Receber', pagar:'Pagar', producao:'Produção', compras:'Compras',
+  clientes:'Clientes', janela:'Janela ERP', vendedores:'Vendedores', usuarios:'Usuários',
+  cobranca:'Cobrança', perdas:'Perdas', transportadora:'Transportadora', motoristas:'Motoristas', meuvend:'Meu painel'
+};
 function abasDoUsuario(){
-  if(ME.tipo==='VENDEDOR') return [['meuvend','Meu painel']];
-  return [
-    ['hoje','Hoje'],['receber','Receber'],['pagar','Pagar'],
-    ['producao','Produção'],['compras','Compras'],['clientes','Clientes'],
-    ['janela','Janela ERP'],['vendedores','Vendedores'],['transportadora','Transportadora'],['motoristas','Motoristas']
-  ];
+  if(ME.tipo==='VENDEDOR') return [['meuvend','Meu painel'],['cobranca','Cobrança']];
+  // perfil principal + extras (perfis_extra guarda perfis adicionais; abas = união)
+  const abas = new Set();
+  (ME.abas||[]).forEach(a=>abas.add(a));
+  (ME.abasExtra||[]).forEach(a=>abas.add(a));
+  if(!abas.size){ // fallback: perfil gerencia vê tudo
+    ['hoje','receber','pagar','producao','compras','clientes','janela','vendedores','usuarios','cobranca','transportadora','motoristas'].forEach(a=>abas.add(a));
+  }
+  const ordem = ['hoje','receber','pagar','producao','compras','clientes','janela','vendedores','cobranca','usuarios','transportadora','motoristas'];
+  return ordem.filter(a=>abas.has(a) && (a!=='usuarios' || ME.is_master || ME.perfil==='gerencia_master')).map(a=>[a, ROTULO_ABA[a]||a]);
 }
 let ABA = null;
 function montarAbas(){
@@ -296,6 +348,8 @@ async function irAba(id){
     else if(id==='transportadora') await abaTransportadora();
     else if(id==='motoristas') await abaMotoristas();
     else if(id==='meuvend') await abaPainelVendedor(null);
+    else if(id==='cobranca') await abaCobranca();
+    else if(id==='usuarios') await abaUsuarios();
   }catch(e){
     el('conteudo').innerHTML = `<div class="cardbox" style="color:var(--bad)">Erro ao carregar: ${e.message||e}</div>`;
   }
