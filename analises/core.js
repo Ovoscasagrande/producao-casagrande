@@ -5,6 +5,15 @@ const BRL = n => n==null ? '—' : n.toLocaleString('pt-BR',{style:'currency',cu
 const NUM = (n,d=0) => n==null ? '—' : n.toLocaleString('pt-BR',{maximumFractionDigits:d,minimumFractionDigits:d});
 const el = id => document.getElementById(id);
 let ME = null, CACHE = {};
+// marca de recuperação de senha (padrão do app CASAGRANDE): sem ela, o link do e-mail
+// criaria sessão válida e a pessoa ENTRARIA LOGADA sem digitar senha
+const IS_RECOVERY = /(^|[&#?])type=recovery(&|$)/.test(location.hash || '')
+                 || /(^|[?&])type=recovery(&|$)/.test(location.search || '');
+if(IS_RECOVERY) sessionStorage.setItem('cg-recovery','1');
+function emRecuperacao(){
+  if(sessionStorage.getItem('cg-recovery')) return true;
+  return /(^|[&#?])type=recovery(&|$)/.test(location.hash || '');
+}
 
 Chart.defaults.color = '#475569';
 Chart.defaults.borderColor = 'rgba(226,232,240,.9)';
@@ -31,21 +40,21 @@ async function doLogin(){
 async function aposLogin(){
   const { data:{ user } } = await sb.auth.getUser();
   if(!user){ status(null); return; }
-  // 1) usuário do app CASAGRANDE (gerência)?
-  const { data: u } = await sb.from('usuarios').select('id,nome,perfil,empresa,ativo,perfis_extra,is_master').eq('id', user.id).maybeSingle();
-  if(u && u.ativo && u.perfil!=='pendente' && ['OVOS','AMBAS','TODAS'].includes(u.empresa)){
-    // abas do perfil principal + dos extras (tabela ovos_perfis)
-    const meusPerfis = [u.perfil, ...(u.perfis_extra||[])];
+  // 1) usuário com PERFIL DE PAINEL (painel_perfil — separado do perfil do app CASAGRANDE)
+  const { data: u } = await sb.from('usuarios').select('id,nome,perfil,empresa,ativo,painel_perfil,painel_perfis_extra,is_master').eq('id', user.id).maybeSingle();
+  if(u && u.ativo && u.painel_perfil && ['OVOS','AMBAS','TODAS'].includes(u.empresa)){
+    // abas do perfil principal + dos extras (tabela painel_perfis)
+    const meusPerfis = [u.painel_perfil, ...(u.painel_perfis_extra||[])];
     let abas = [], abasExtra = [];
     try{
-      const { data: pf } = await sb.from('ovos_perfis').select('perfil,abas').in('perfil', meusPerfis);
+      const { data: pf } = await sb.from('painel_perfis').select('perfil,abas').in('perfil', meusPerfis);
       (pf||[]).forEach(p=>{
-        if(p.perfil===u.perfil) abas = p.abas||[];
+        if(p.perfil===u.painel_perfil) abas = p.abas||[];
         else abasExtra = abasExtra.concat(p.abas||[]);
       });
     }catch(e){ /* fallback abaixo */ }
-    ME = { id:user.id, nome:u.nome, perfil:u.perfil, empresa:u.empresa, ativo:true, tipo:'GERENCIA',
-           perfis_extra:u.perfis_extra||[], is_master:!!u.is_master, abas, abasExtra };
+    ME = { id:user.id, nome:u.nome, perfil:u.painel_perfil, empresa:u.empresa, ativo:true, tipo:'GERENCIA',
+           perfis_extra:u.painel_perfis_extra||[], is_master:u.painel_perfil==='gerencia_master', abas, abasExtra };
   } else {
     // 2) vendedor com login próprio?
     const { data: v } = await sb.from('ovos_vendedores').select('id,nome,comissao_pct,tipo,ativo').eq('usuario_id', user.id).maybeSingle();
@@ -98,9 +107,63 @@ async function criarConta(){
 }
 
 sb.auth.onAuthStateChange((ev)=>{
+  if(ev==='PASSWORD_RECOVERY'){ sessionStorage.setItem('cg-recovery','1'); mostrarTelaNovaSenha(); return; }
   if(ev==='SIGNED_OUT' && ME){ location.reload(); }
-  if(ev==='INITIAL_SESSION'){ sb.auth.getUser().then(({data:{user}})=>{ if(user && !ME) aposLogin(); }); }
+  if(ev==='INITIAL_SESSION'){
+    if(emRecuperacao()){ mostrarTelaNovaSenha(); return; } // NUNCA aposLogin em recuperação
+    sb.auth.getUser().then(({data:{user}})=>{ if(user && !ME && !emRecuperacao()) aposLogin(); });
+  }
 });
+
+// ---------- tela de nova senha (link do e-mail) ----------
+function mostrarTelaNovaSenha(){
+  el('loginScreen').style.display='flex';
+  el('app').style.display='none';
+  const box = el('loginboxForm');
+  if(box && !box.dataset.redef){
+    box.dataset.redef = '1';
+    box.innerHTML = `
+      <h3 style="font-size:18px;font-weight:800;margin-bottom:4px">Nova senha</h3>
+      <div class="sub" style="margin-bottom:16px">defina a nova senha da sua conta</div>
+      <div class="field"><label>Nova senha</label><input id="np1" type="password" placeholder="mín. 6 caracteres" autocomplete="new-password"></div>
+      <div class="field"><label>Confirmar</label><input id="np2" type="password" autocomplete="new-password"></div>
+      <button onclick="salvarNovaSenha()">salvar nova senha</button>
+      <div style="margin-top:10px"><button type="button" class="btn-sm" style="width:100%;padding:9px" onclick="voltarLogin()">voltar ao login</button></div>
+      <div class="err" id="logErr"></div>`;
+  }
+}
+async function salvarNovaSenha(){
+  const p1 = el('np1').value, p2 = el('np2').value;
+  if(p1.length<6){ el('logErr').textContent='Mínimo 6 caracteres.'; return; }
+  if(p1!==p2){ el('logErr').textContent='As senhas não conferem.'; return; }
+  status('Salvando…');
+  const { error } = await sb.auth.updateUser({ password: p1 });
+  status(null);
+  if(error){ el('logErr').textContent = 'Erro: '+(error.message||error); return; }
+  await sb.auth.signOut(); // sessão de recuperação morre aqui
+  sessionStorage.removeItem('cg-recovery');
+  location.reload();
+}
+async function voltarLogin(){
+  await sb.auth.signOut(); // sem isso o reload entraria logado
+  sessionStorage.removeItem('cg-recovery');
+  location.reload();
+}
+function mensagemLinkExpirado(){
+  el('logErr').textContent = '⚠️ Link de recuperação expirado ou já usado. Solicite um novo ("esqueci a senha").';
+}
+
+// ---------- boot ----------
+(function init(){
+  if(emRecuperacao()){
+    sb.auth.getUser().then(({data:{user}})=>{
+      if(user) mostrarTelaNovaSenha();
+      else { sessionStorage.removeItem('cg-recovery'); mensagemLinkExpirado(); }
+    });
+    return;
+  }
+  sb.auth.getUser().then(({data:{user}})=>{ if(user && !ME) aposLogin(); });
+})();
 
 // ---------- dados ----------
 async function carregar(tabla, cols='*', filtro=null){
@@ -309,7 +372,7 @@ function hintGrafico(canvasId, texto){
   (head || card).appendChild(hint);
 }
 
-// ---------- abas (dinâmicas por perfil — tabela ovos_perfis) ----------
+// ---------- abas (dinâmicas por perfil — tabela painel_perfis) ----------
 const ROTULO_ABA = {
   hoje:'Hoje', receber:'Receber', pagar:'Pagar', producao:'Produção', compras:'Compras',
   clientes:'Clientes', janela:'Janela ERP', vendedores:'Vendedores', usuarios:'Usuários',
@@ -317,7 +380,7 @@ const ROTULO_ABA = {
 };
 function abasDoUsuario(){
   if(ME.tipo==='VENDEDOR') return [['meuvend','Meu painel'],['cobranca','Cobrança']];
-  // perfil principal + extras (perfis_extra guarda perfis adicionais; abas = união)
+  // perfil principal + extras (painel_perfis_extra guarda perfis adicionais; abas = união)
   const abas = new Set();
   (ME.abas||[]).forEach(a=>abas.add(a));
   (ME.abasExtra||[]).forEach(a=>abas.add(a));
